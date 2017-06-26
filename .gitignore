@@ -1,0 +1,6 @@
+# Python stuff
+*.pyc
+__pycache__/*
+
+# Other, custom
+test_morph.py
