@@ -2,5 +2,9 @@
 *.pyc
 __pycache__/*
 
+# Images
+*.png
+
 # Other, custom
 test_morph.py
+notes_to_self.txt
