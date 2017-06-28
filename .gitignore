@@ -5,7 +5,9 @@ __pycache__/*
 # Images
 *.png
 
+# Profiling
+*.prof
+
 # Other, custom
 test_morph.py
-statmorph_bkp.py
 notes_to_self.txt

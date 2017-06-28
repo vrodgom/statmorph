@@ -70,19 +70,19 @@ class SourceMorphology(object):
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
-        # Centroid of the source relative to the "morphology" cutout:
-        self._xc_morph = self._props.xcentroid.value - self._slice_morph[1].start
-        self._yc_morph = self._props.ycentroid.value - self._slice_morph[0].start
+        # Centroid of the source relative to the "postage stamp" cutout:
+        self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
+        self._yc_stamp = self._props.ycentroid.value - self._slice_stamp[0].start
 
     def __getitem__(self, key):
         return getattr(self, key)
 
     @lazyproperty
-    def _slice_morph(self):
+    def _slice_stamp(self):
         """
-        Attempt to create a square "slice" (centered at the centroid)
+        Attempt to create a square slice (centered at the centroid)
         that is slightly larger than the minimum bounding box used by
-        photutils. This is necessary for some morphological
+        photutils. This is important for some morphological
         calculations. Note that the cutout may not be square when the
         source is close to a border of the original image.
 
@@ -98,31 +98,28 @@ class SourceMorphology(object):
 
         # Make cutout
         ny, nx = self._props._data.shape
-        slice_square = (slice(max(0, yc-dist), min(ny, yc+dist)),
+        slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist)),
                         slice(max(0, xc-dist), min(nx, xc+dist)))
 
-        return slice_square
+        return slice_stamp
 
     @lazyproperty
-    def _cutout_morph(self):
+    def _cutout_stamp(self):
         """
         Return a data cutout centered on the source of interest,
         but which is slightly larger than the minimal bounding box.
         Pixels belonging to other sources (as well as masked pixels)
         are set to zero, but the background is left alone.
-        
+
         """
-        cutout_morph = self._props._data[self._slice_morph]
-        segmap_morph = self._props._segment_img.data[self._slice_morph]
-
-        cutout_morph = np.where(
-            (segmap_morph == 0) | (segmap_morph == self._props.label),
-            cutout_morph, 0)
-
+        cutout_stamp = self._props._data[self._slice_stamp]
+        segmap_stamp = self._props._segment_img.data[self._slice_stamp]
+        mask_stamp = (segmap_stamp > 0) & (segmap_stamp != self._props.label)
         if self._props._mask is not None:
-            cutout_morph = np.where(~self._props._mask, cutout_morph, 0)
+            mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
+        cutout_stamp[mask_stamp] = 0
         
-        return cutout_morph
+        return cutout_stamp
 
     @lazyproperty
     def _dist_to_closest_corner(self):
@@ -130,6 +127,7 @@ class SourceMorphology(object):
         The distance from the centroid to the closest corner of the
         minimal bounding box containing the source. This is used as an
         upper limit when computing the Petrosian radius.
+
         """
         x_dist = min(self._props.xmax.value - self._props.xcentroid.value,
                      self._props.xcentroid.value - self._props.xmin.value)
@@ -155,14 +153,14 @@ class SourceMorphology(object):
         theta = self._props.orientation.value
 
         ellip_annulus = photutils.EllipticalAnnulus(
-            (self._xc_morph, self._yc_morph), a_in, a_out, b_out, theta)
+            (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_aperture = photutils.EllipticalAperture(
-            (self._xc_morph, self._yc_morph), a, b, theta)
+            (self._xc_stamp, self._yc_stamp), a, b, theta)
 
         ellip_annulus_mean_flux = ellip_annulus.do_photometry(
-            self._cutout_morph, method='exact')[0][0] / ellip_annulus.area()
+            self._cutout_stamp, method='exact')[0][0] / ellip_annulus.area()
         ellip_aperture_mean_flux = ellip_aperture.do_photometry(
-            self._cutout_morph, method='exact')[0][0] / ellip_aperture.area()
+            self._cutout_stamp, method='exact')[0][0] / ellip_aperture.area()
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -181,14 +179,14 @@ class SourceMorphology(object):
         r_out = r + 1.0
 
         circ_annulus = photutils.CircularAnnulus(
-            (self._xc_morph, self._yc_morph), r_in, r_out)
+            (self._xc_stamp, self._yc_stamp), r_in, r_out)
         circ_aperture = photutils.CircularAperture(
-            (self._xc_morph, self._yc_morph), r)
+            (self._xc_stamp, self._yc_stamp), r)
 
         circ_annulus_mean_flux = circ_annulus.do_photometry(
-            self._cutout_morph, method='exact')[0][0] / circ_annulus.area()
+            self._cutout_stamp, method='exact')[0][0] / circ_annulus.area()
         circ_aperture_mean_flux = circ_aperture.do_photometry(
-            self._cutout_morph, method='exact')[0][0] / circ_aperture.area()
+            self._cutout_stamp, method='exact')[0][0] / circ_aperture.area()
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -268,18 +266,18 @@ class SourceMorphology(object):
                 [1, 1, 1],
             ])
             local_mean = ndi.filters.generic_filter(
-                self._cutout_morph, np.mean, footprint=local_footprint)
+                self._cutout_stamp, np.mean, footprint=local_footprint)
             local_std = ndi.filters.generic_filter(
-                self._cutout_morph, np.std, footprint=local_footprint)
-            bad_pixels = (self._cutout_morph - local_mean >
+                self._cutout_stamp, np.std, footprint=local_footprint)
+            bad_pixels = (self._cutout_stamp - local_mean >
                           self._n_sigma_outlier * local_std)
-            cutout_gini = np.where(~bad_pixels, self._cutout_morph, 0)
+            cutout_gini = np.where(~bad_pixels, self._cutout_stamp, 0)
             
             print('There are %d bad pixels.' % (np.sum(bad_pixels)))
             print('It took', time.time() - start, 's to remove them.')
 
         else:
-            cutout_gini = self._cutout_morph
+            cutout_gini = self._cutout_stamp
 
         return cutout_gini
 
@@ -307,7 +305,7 @@ class SourceMorphology(object):
         b_out = a_out / self._props.elongation.value
         theta = self._props.orientation.value
         ellip_annulus = photutils.EllipticalAnnulus(
-            (self._xc_morph, self._yc_morph), a_in, a_out, b_out, theta)
+            (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = ellip_annulus.do_photometry(
             cutout_smooth, method='exact')[0][0] / ellip_annulus.area()
         petro_segmap = np.where(cutout_smooth >= ellip_annulus_mean_flux, 1, 0)
