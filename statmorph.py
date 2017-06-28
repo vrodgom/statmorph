@@ -37,15 +37,21 @@ class SourceMorphology(object):
         the mean flux within the aperture is equal to ``eta``. The
         default value is typically set to 0.2 (Petrosian 1976).
     petro_sigma_fraction : float, optional
-        The fraction of the Petrosian radius used as
-        a smoothing scale before defining the pixels
-        that belong to the galaxy, at least for the
-        calculation of the Gini coefficient. The
-        default value is 0.2.
+        The fraction of the Petrosian radius used as a smoothing scale
+        in order to define the pixels that belong to the galaxy, at
+        least for the calculation of the Gini coefficient. The default
+        value is 0.2.
+    remove_outliers : bool, optional
+        If `True`, remove outlying pixels as described in Lotz et al.
+        (2004), using the parameter ``n_sigma_outlier``. This is the
+        most time-consuming operation and, at least for reasonably
+        clean data, it should have a negligible effect on Gini
+        coefficient. By default it is set to `False`.
     n_sigma_outlier : scalar, optional
-        The number of standard deviations that define a
-        pixel as an outlier, relative to its 8 neighbors.
-        The default value is 10.
+        The number of standard deviations that define a pixel as an
+        outlier, relative to its 8 neighbors. This parameter only
+        takes effect when ``remove_outliers`` is `True`. The default
+        value is 10.
 
     References
     ----------
@@ -53,10 +59,12 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_sigma_fraction=0.2, n_sigma_outlier=10):
+                 eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
+                 n_sigma_outlier=10):
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_sigma_fraction = petro_sigma_fraction
+        self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
 
         # The following object stores some important data:
@@ -249,19 +257,30 @@ class SourceMorphology(object):
         """
         Remove outliers as described in Lotz et al. (2004).
         """
-        local_footprint = np.array([
-            [1, 1, 1],
-            [1, 0, 1],
-            [1, 1, 1],
-        ])
-        local_mean = ndi.filters.generic_filter(
-            self._cutout_morph, np.mean, footprint=local_footprint)
-        local_std = ndi.filters.generic_filter(
-            self._cutout_morph, np.std, footprint=local_footprint)
-        cutout_gini = np.where(
-            np.abs(self._cutout_morph - local_mean) < self._n_sigma_outlier * local_std,
-            self._cutout_morph, 0)
-        
+        if self._remove_outliers:
+            # For performance checks
+            start = time.time()
+
+            # Exclude the center pixel from calculations
+            local_footprint = np.array([
+                [1, 1, 1],
+                [1, 0, 1],
+                [1, 1, 1],
+            ])
+            local_mean = ndi.filters.generic_filter(
+                self._cutout_morph, np.mean, footprint=local_footprint)
+            local_std = ndi.filters.generic_filter(
+                self._cutout_morph, np.std, footprint=local_footprint)
+            bad_pixels = (self._cutout_morph - local_mean >
+                          self._n_sigma_outlier * local_std)
+            cutout_gini = np.where(~bad_pixels, self._cutout_morph, 0)
+            
+            print('There are %d bad pixels.' % (np.sum(bad_pixels)))
+            print('It took', time.time() - start, 's to remove them.')
+
+        else:
+            cutout_gini = self._cutout_morph
+
         return cutout_gini
 
     @lazyproperty
@@ -278,27 +297,10 @@ class SourceMorphology(object):
         removed before smoothing the image.
         
         """
+        # Smooth image
         petro_sigma = self._petro_sigma_fraction * self.petrosian_radius_ellip
-
-        # Smooth image using ndimage (note: scipy.fftconvolve and
-        # astropy.convolve_fft take exactly the same time)
-        start = time.time()
         cutout_smooth = ndi.gaussian_filter(self._cutout_gini, petro_sigma)
 
-        #~ # Smooth image -- try Astropy
-        #~ import astropy.convolution as conv
-        #~ gauss = conv.Gaussian2DKernel(petro_sigma)
-        #~ cutout_smooth = conv.convolve_fft(self._cutout_gini, gauss)
-
-        #~ # Smooth image -- try scipy.signal.fftconvolve
-        #~ import scipy.signal as sig
-        #~ # 4 standard deviations on each side seems quite standard
-        #~ kernel = np.outer(sig.gaussian(int(8*petro_sigma), petro_sigma), 
-                          #~ sig.gaussian(int(8*petro_sigma), petro_sigma))
-        #~ cutout_smooth = sig.fftconvolve(self._cutout_gini, kernel, mode='same')
-
-        print('Time spent smoothing image:', time.time() - start, 's.')
-        
         # Use mean flux at the Petrosian "radius" as threshold
         a_in = self.petrosian_radius_ellip - 1.0
         a_out = self.petrosian_radius_ellip + 1.0
@@ -339,7 +341,9 @@ class SourceMorphology(object):
         return gini
 
 
-def source_morphology(image, segmap):
+def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
+                 eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
+                 n_sigma_outlier=10):
     """
     Calculate the morphological parameters of all sources in ``image``
     as defined by ``segmap``.
@@ -367,15 +371,21 @@ def source_morphology(image, segmap):
         the mean flux within the aperture is equal to ``eta``. The
         default value is typically set to 0.2 (Petrosian 1976).
     petro_sigma_fraction : float, optional
-        The fraction of the Petrosian radius used as
-        a smoothing scale before defining the pixels
-        that belong to the galaxy, at least for the
-        calculation of the Gini coefficient. The
-        default value is 0.2.
+        The fraction of the Petrosian radius used as a smoothing scale
+        in order to define the pixels that belong to the galaxy, at
+        least for the calculation of the Gini coefficient. The default
+        value is 0.2.
+    remove_outliers : bool, optional
+        If `True`, remove outlying pixels as described in Lotz et al.
+        (2004), using the parameter ``n_sigma_outlier``. This is the
+        most time-consuming operation and, at least for reasonably
+        clean data, it should have a negligible effect on Gini
+        coefficient. By default it is set to `False`.
     n_sigma_outlier : scalar, optional
-        The number of standard deviations that define a
-        pixel as an outlier, relative to its 8 neighbors.
-        The default value is 10.
+        The number of standard deviations that define a pixel as an
+        outlier, relative to its 8 neighbors. This parameter only
+        takes effect when ``remove_outliers`` is `True`. The default
+        value is 10.
 
     Returns
     -------
@@ -395,7 +405,10 @@ def source_morphology(image, segmap):
 
     sources_morph = []
     for label in segmap.labels:
-        sources_morph.append(SourceMorphology(image, segmap, label))
+        sources_morph.append(SourceMorphology(
+            image, segmap, label, mask=mask, cutout_extent=cutout_extent,
+            eta=eta, petro_sigma_fraction=petro_sigma_fraction,
+            remove_outliers=remove_outliers, n_sigma_outlier=n_sigma_outlier))
 
     return sources_morph
 
