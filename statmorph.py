@@ -2,7 +2,9 @@ import numpy as np
 import time
 import scipy.optimize as opt
 import scipy.ndimage as ndi
+import skimage.measure as msr
 from astropy.utils import lazyproperty
+from astropy.stats import gaussian_sigma_to_fwhm
 import photutils
 
 __all__ = ['SourceMorphology', 'source_morphology']
@@ -230,27 +232,6 @@ class SourceMorphology(object):
         return rpetro_circ
 
     @lazyproperty
-    def _cutout_clean(self):
-        """
-        Remove outliers from the cutout containing the source.
-        
-        """
-        local_footprint = np.array([
-            [1, 1, 1],
-            [1, 0, 1],
-            [1, 1, 1],
-        ])
-        local_mean = ndi.filters.generic_filter(
-            self._cutout, np.mean, footprint=local_footprint)
-        local_sigma = ndi.filters.generic_filter(
-            self._cutout, np.std, footprint=local_footprint)
-        cutout_clean = np.where(
-            self._cutout < local_mean + self._n_sigma_outlier * local_sigma,
-            self._cutout, 0)
-
-        return cutout_clean
-
-    @lazyproperty
     def _cutout_gini(self):
         """
         Remove outliers as described in Lotz et al. (2004).
@@ -269,7 +250,7 @@ class SourceMorphology(object):
                 self._cutout_stamp, np.mean, footprint=local_footprint)
             local_std = ndi.filters.generic_filter(
                 self._cutout_stamp, np.std, footprint=local_footprint)
-            bad_pixels = (self._cutout_stamp - local_mean >
+            bad_pixels = (np.abs(self._cutout_stamp - local_mean) >
                           self._n_sigma_outlier * local_std)
             cutout_gini = np.where(~bad_pixels, self._cutout_stamp, 0)
             
@@ -297,6 +278,10 @@ class SourceMorphology(object):
         """
         # Smooth image
         petro_sigma = self._petro_sigma_fraction * self.petrosian_radius_ellip
+        
+        # TMP: Match IDL implementation (1/10 of fwhm)
+        petro_sigma = petro_sigma * gaussian_sigma_to_fwhm / 2.0
+        
         cutout_smooth = ndi.gaussian_filter(self._cutout_gini, petro_sigma)
 
         # Use mean flux at the Petrosian "radius" as threshold
@@ -308,21 +293,14 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = ellip_annulus.do_photometry(
             cutout_smooth, method='exact')[0][0] / ellip_annulus.area()
-        petro_segmap = np.where(cutout_smooth >= ellip_annulus_mean_flux, 1, 0)
+        segmap_gini = np.where(cutout_smooth >= ellip_annulus_mean_flux, 1, 0)
         
-        return petro_segmap
+        return segmap_gini
 
     @lazyproperty
     def gini(self):
         """
         Calculate the Gini coefficient as described in Lotz et al. (2004).
-        
-        Notes
-        -----
-        The Gini calculation is ambiguous when the image has negative values
-        (e.g., from sky subtraction). Although this function considers the
-        absolute value of the pixels, the negative values in the data have
-        already been set to zero.
         
         """
         image = self._cutout_gini.flatten()
@@ -331,12 +309,46 @@ class SourceMorphology(object):
         sorted_pixelvals = np.sort(np.abs(image[segmap == 1]))
         total_absflux = np.sum(sorted_pixelvals)
 
-        # Fast computation using array operations
         n = len(sorted_pixelvals)
-        indices = np.arange(1, n+1, dtype=np.int64)  # start at i=1
+        indices = np.arange(1, n+1)  # start at i=1
         gini = np.sum((2*indices-n-1)*sorted_pixelvals) / (total_absflux*float(n-1))
 
         return gini
+
+    @lazyproperty
+    def m20(self):
+        """
+        Calculate the M_20 coefficient as described in Lotz et al. (2004).
+        
+        """
+        # Use the same region as in the Gini calculation
+        image = np.where(self._segmap_gini == 1, self._cutout_gini, 0.0)
+        image = np.float64(image)  # skimage wants this
+
+        # Calculate centroid
+        m = msr.moments(image, order=1)
+        yc = m[0, 1] / m[0, 0]
+        xc = m[1, 0] / m[0, 0]
+
+        # Calculate second total central moment
+        mc = msr.moments_central(image, yc, xc, order=3)
+        second_moment = mc[0, 2] + mc[2, 0]
+
+        # Calculate threshold pixel value
+        sorted_pixelvals = np.sort(image.flatten())
+        flux_fraction = np.cumsum(sorted_pixelvals) / np.sum(sorted_pixelvals)
+        threshold = sorted_pixelvals[flux_fraction >= 0.8][0]
+
+        # Calculate second moment of the brightest pixels
+        image_20 = np.where(image >= threshold, image, 0.0)
+        mc_20 = msr.moments_central(image_20, yc, xc, order=3)
+        second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
+
+        # Normalize
+        m20 = np.log10(second_moment_20 / second_moment)
+
+        return m20
+
 
 
 def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
