@@ -20,8 +20,8 @@ class SourceMorphology(object):
         The 2D image containing the sources of interest.
     segmap : array-like (int) or `photutils.SegmentationImage`
         A 2D segmentation map where different sources are 
-        indicated with different positive integer values.
-        A value of zero represents the background.
+        labeled with different positive integer values.
+        A value of zero is reserved for the background.
     label : int
         A label indicating the source of interest.
     mask : array-like (bool), optional
@@ -42,9 +42,6 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
-    petro_fraction_cas : float, optional
-        In the CAS calculations, this is the fraction of the Petrosian
-        radius used as a smoothing scale. The default value is 0.25.
     remove_outliers : bool, optional
         If `True`, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``. This is the
@@ -67,6 +64,9 @@ class SourceMorphology(object):
         The radius of the circular aperture used for the asymmetry
         calculation, in units of the circular Petrosian radius. The
         default value is 1.5.
+    petro_fraction_cas : float, optional
+        In the CAS calculations, this is the fraction of the Petrosian
+        radius used as a smoothing scale. The default value is 0.25.
 
     References
     ----------
@@ -74,19 +74,18 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_fraction_gini=0.2, petro_fraction_cas=0.25,
-                 remove_outliers=False,
+                 eta=0.2, petro_fraction_gini=0.2, remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5):
+                 petro_extent=1.5, petro_fraction_cas=0.25):
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
-        self._petro_fraction_cas = petro_fraction_cas
         self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
         self._border_size = border_size
         self._skybox_size = skybox_size
         self._petro_extent = petro_extent
+        self._petro_fraction_cas = petro_fraction_cas
         
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
@@ -541,15 +540,10 @@ class SourceMorphology(object):
         return S
 
 
-
-def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_fraction_gini=0.2, petro_fraction_cas=0.25,
-                 remove_outliers=False,
-                 n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5):
+def source_morphology(image, segmap, **kwargs):
     """
     Calculate the morphological parameters of all sources in ``image``
-    as defined by ``segmap``.
+    as labeled by ``segmap``.
     
     Parameters
     ----------
@@ -557,51 +551,12 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
         The 2D image containing the sources of interest.
     segmap : array-like (int) or `photutils.SegmentationImage`
         A 2D segmentation map where different sources are 
-        indicated with different positive integer values.
-        A value of zero represents the background.
-    mask : array-like (bool), optional
-        A 2D array with the same size as ``image``, where pixels
-        set to `True` are ignored from all calculations.
-    cutout_extent : float, optional
-        The target fractional size of the data cutout relative to
-        the size of the segment containing the source (the original
-        implementation adds 100 pixels in each dimension). The value
-        must be >= 1. The default value is 1.5 (i.e., 50% larger).
-    eta : float, optional
-        The Petrosian ``eta`` parameter used to define the Petrosian
-        radius. For a circular or elliptical aperture at the Petrosian
-        radius, the mean flux at the edge of the aperture divided by
-        the mean flux within the aperture is equal to ``eta``. The
-        default value is typically set to 0.2 (Petrosian 1976).
-    petro_fraction_gini : float, optional
-        In the Gini calculation, this is the fraction of the Petrosian
-        "radius" used as a smoothing scale in order to define the pixels
-        that belong to the galaxy. The default value is 0.2.
-    petro_fraction_cas : float, optional
-        In the CAS calculations, this is the fraction of the Petrosian
-        radius used as a smoothing scale. The default value is 0.25.
-    remove_outliers : bool, optional
-        If `True`, remove outlying pixels as described in Lotz et al.
-        (2004), using the parameter ``n_sigma_outlier``. This is the
-        most time-consuming operation and, at least for reasonably
-        clean data, it should have a negligible effect on Gini
-        coefficient. By default it is set to `False`.
-    n_sigma_outlier : scalar, optional
-        The number of standard deviations that define a pixel as an
-        outlier, relative to its 8 neighbors. This parameter only
-        takes effect when ``remove_outliers`` is `True`. The default
-        value is 10.
-    border_size : scalar, optional
-        The number of pixels that are skipped from each border of the
-        "postage stamp" image cutout when finding the skybox. The
-        default is 5 pixels.
-    skybox_size : scalar, optional
-        The size in pixels of the (square) "skybox" used to measure
-        properties of the image background. The default is 20 pixels.
-    petro_extent : float, optional
-        The radius of the circular aperture used for the asymmetry
-        calculation, in units of the circular Petrosian radius. The
-        default value is 1.5.
+        labeled with different positive integer values.
+        A value of zero is reserved for the background.
+
+    Other parameters
+    ----------------
+    kwargs : `~statmorph.SourceMorphology` properties.
 
     Returns
     -------
@@ -621,15 +576,7 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
 
     sources_morph = []
     for label in segmap.labels:
-        sources_morph.append(SourceMorphology(
-            image, segmap, label, mask=mask, cutout_extent=cutout_extent,
-            eta=eta, petro_fraction_gini=petro_fraction_gini,
-            petro_fraction_cas=petro_fraction_cas,
-            remove_outliers=remove_outliers, n_sigma_outlier=n_sigma_outlier,
-            border_size=border_size, skybox_size=skybox_size,
-            petro_extent=petro_extent))
+        sources_morph.append(SourceMorphology(image, segmap, label, **kwargs))
 
     return sources_morph
-
-
 
