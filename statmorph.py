@@ -3,7 +3,6 @@ import time
 import scipy.optimize as opt
 import scipy.ndimage as ndi
 import skimage.measure as msr
-from skimage.transform import rotate
 from astropy.utils import lazyproperty
 from astropy.stats import gaussian_sigma_to_fwhm
 import photutils
@@ -411,11 +410,7 @@ class SourceMorphology(object):
         Asymmetry of the background.
         """
         bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
-        bkg_180 = rotate(bkg, 180.0)
-
-        #~ # This gives the same result:
-        #~ bkg_180 = bkg[::-1, ::-1]
-
+        bkg_180 = bkg[::-1, ::-1]
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
 
     def _asymmetry_function(self, center):
@@ -427,24 +422,30 @@ class SourceMorphology(object):
         ap = photutils.CircularAperture(center, r)
 
         image = self._cutout_stamp_maskzeroed_double
-        # Some comments about skimage version 0.13.0...
-        # The "center" argument must be truncated
+
+        # Here are some notes about why I'm *not* using
+        # skimage.transform.rotate. The following line would
+        # work correctly in skimage version 0.13.0:
+        # skimage.transform.rotate(image, 180.0, center=np.floor(center))
+        # However, note that the "center" argument must be truncated,
+        # which is not mentioned in the documentation
         # (https://github.com/scikit-image/scikit-image/issues/1732).
         # Also, the center must be given as (x,y), not (y,x), which is
-        # the opposite of what the skimage documentation says...
-        image_180 = rotate(image, 180.0, center=np.floor(center))
+        # the opposite (!) of what the skimage documentation says...
 
-        #~ # Alternatively, this is a less precise (but more trustworthy
-        #~ # and probably faster) way of doing the 180 deg rotation:
-        #~ xc, yc = np.floor(center) + 0.5  # center of pixel
-        #~ ny, nx = image.shape
-        #~ dx = min(nx-xc, xc)
-        #~ dy = min(ny-yc, yc)
-        #~ xslice = slice(int(xc-dx), int(xc+dx))
-        #~ yslice = slice(int(yc-dy), int(yc+dy))
-        #~ # Limit to region that can be rotated around center:
-        #~ image = image[yslice, xslice]
-        #~ image_180 = image[::-1, ::-1]
+        # Such incomplete and contradictory documentation in skimage
+        # does not inspire much confidence (probably something will
+        # change in future versions), so instead we do the 180 deg
+        # rotation by hand. Also, this is probably faster:
+        ny, nx = image.shape
+        xc, yc = np.floor(center) + 0.5  # center of pixel
+        dx = min(nx-xc, xc)
+        dy = min(ny-yc, yc)
+        # Crop to region that can be rotated around center:
+        xslice = slice(int(xc-dx), int(xc+dx))
+        yslice = slice(int(yc-dy), int(yc+dy))
+        image = image[yslice, xslice]
+        image_180 = image[::-1, ::-1]
 
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
