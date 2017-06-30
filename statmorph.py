@@ -3,6 +3,7 @@ import time
 import scipy.optimize as opt
 import scipy.ndimage as ndi
 import skimage.measure as msr
+from skimage.transform import rotate
 from astropy.utils import lazyproperty
 from astropy.stats import gaussian_sigma_to_fwhm
 import photutils
@@ -54,6 +55,17 @@ class SourceMorphology(object):
         outlier, relative to its 8 neighbors. This parameter only
         takes effect when ``remove_outliers`` is `True`. The default
         value is 10.
+    border_size : scalar, optional
+        The number of pixels that are skipped from each border of the
+        "postage stamp" image cutout when finding the skybox. The
+        default is 5 pixels.
+    skybox_size : scalar, optional
+        The size in pixels of the (square) "skybox" used to measure
+        properties of the image background. The default is 20 pixels.
+    petro_extent : float, optional
+        The radius of the circular aperture used for the asymmetry
+        calculation, in units of the circular Petrosian radius. The
+        default value is 1.5.
 
     References
     ----------
@@ -62,13 +74,17 @@ class SourceMorphology(object):
     """
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
                  eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
-                 n_sigma_outlier=10):
+                 n_sigma_outlier=10, border_size=5, skybox_size=20,
+                 petro_extent=1.5):
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_sigma_fraction = petro_sigma_fraction
         self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
-
+        self._border_size = border_size
+        self._skybox_size = skybox_size
+        self._petro_extent = petro_extent
+        
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
@@ -106,7 +122,7 @@ class SourceMorphology(object):
         return slice_stamp
 
     @lazyproperty
-    def _cutout_stamp(self):
+    def _cutout_stamp_maskzeroed_double(self):
         """
         Return a data cutout centered on the source of interest,
         but which is slightly larger than the minimal bounding box.
@@ -121,7 +137,8 @@ class SourceMorphology(object):
             mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
         cutout_stamp[mask_stamp] = 0
         
-        return cutout_stamp
+        # Some skimage functions require double precision:
+        return np.float64(cutout_stamp)
 
     @lazyproperty
     def _dist_to_closest_corner(self):
@@ -160,9 +177,9 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), a, b, theta)
 
         ellip_annulus_mean_flux = ellip_annulus.do_photometry(
-            self._cutout_stamp, method='exact')[0][0] / ellip_annulus.area()
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / ellip_annulus.area()
         ellip_aperture_mean_flux = ellip_aperture.do_photometry(
-            self._cutout_stamp, method='exact')[0][0] / ellip_aperture.area()
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / ellip_aperture.area()
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -186,9 +203,9 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), r)
 
         circ_annulus_mean_flux = circ_annulus.do_photometry(
-            self._cutout_stamp, method='exact')[0][0] / circ_annulus.area()
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_annulus.area()
         circ_aperture_mean_flux = circ_aperture.do_photometry(
-            self._cutout_stamp, method='exact')[0][0] / circ_aperture.area()
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_aperture.area()
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -247,18 +264,18 @@ class SourceMorphology(object):
                 [1, 1, 1],
             ])
             local_mean = ndi.filters.generic_filter(
-                self._cutout_stamp, np.mean, footprint=local_footprint)
+                self._cutout_stamp_maskzeroed_double, np.mean, footprint=local_footprint)
             local_std = ndi.filters.generic_filter(
-                self._cutout_stamp, np.std, footprint=local_footprint)
-            bad_pixels = (np.abs(self._cutout_stamp - local_mean) >
+                self._cutout_stamp_maskzeroed_double, np.std, footprint=local_footprint)
+            bad_pixels = (np.abs(self._cutout_stamp_maskzeroed_double - local_mean) >
                           self._n_sigma_outlier * local_std)
-            cutout_gini = np.where(~bad_pixels, self._cutout_stamp, 0)
+            cutout_gini = np.where(~bad_pixels, self._cutout_stamp_maskzeroed_double, 0)
             
             print('There are %d bad pixels.' % (np.sum(bad_pixels)))
             print('It took', time.time() - start, 's to remove them.')
 
         else:
-            cutout_gini = self._cutout_stamp
+            cutout_gini = self._cutout_stamp_maskzeroed_double
 
         return cutout_gini
 
@@ -349,11 +366,105 @@ class SourceMorphology(object):
 
         return m20
 
+    @lazyproperty
+    def _slice_skybox(self):
+        """
+        Find a region of the sky that only contains background.
+        """
+        border_size = self._border_size
+        skybox_size = self._skybox_size
 
+        image = self._props._data[self._slice_stamp]
+        segmap = self._props._segment_img.data[self._slice_stamp]
+        mask = np.zeros(image.shape, dtype=np.bool8)
+        if self._props._mask is not None:
+            mask = self._props._mask[self._slice_stamp]
+
+        ny, nx = image.shape
+        for i in range(border_size, ny - border_size - skybox_size):
+            for j in range(border_size, nx - border_size - skybox_size):
+                boxslice = (slice(i, i + skybox_size),
+                            slice(j, j + skybox_size))
+                if np.all(segmap[boxslice] == 0) and np.all(~mask[boxslice]):
+                    return boxslice
+
+        # If we got here, something went wrong.
+        raise Exception('Error: skybox not found.')
+
+    @lazyproperty
+    def _sky_mean(self):
+        """
+        Standard deviation of the background.
+        """
+        return np.mean(self._cutout_stamp_maskzeroed_double[self._slice_skybox])
+
+    @lazyproperty
+    def _sky_sigma(self):
+        """
+        Mean background value.
+        """
+        return np.std(self._cutout_stamp_maskzeroed_double[self._slice_skybox])
+
+    @lazyproperty
+    def _sky_asymmetry(self):
+        """
+        Asymmetry of the background.
+        """
+        bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
+        bkg_180 = rotate(bkg, 180.0)
+
+        #~ # This gives the same result:
+        #~ bkg_180 = bkg[::-1, ::-1]
+
+        return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
+
+    def _asymmetry_function(self, center):
+        """
+        Helper function to determine the asymmetry and center of asymmetry.
+        
+        """
+        r = self._petro_extent * self.petrosian_radius_circ
+        ap = photutils.CircularAperture(center, r)
+
+        image = self._cutout_stamp_maskzeroed_double
+        # Some comments about skimage version 0.13.0...
+        # The "center" argument must be truncated
+        # (https://github.com/scikit-image/scikit-image/issues/1732).
+        # Also, the center must be given as (x,y), not (y,x), which is
+        # the opposite of what the skimage documentation says...
+        image_180 = rotate(image, 180.0, center=np.floor(center))
+
+        #~ # Alternatively, this is a less precise (but more trustworthy
+        #~ # and probably faster) way of doing the 180 deg rotation:
+        #~ xc, yc = np.floor(center) + 0.5  # center of pixel
+        #~ ny, nx = image.shape
+        #~ dx = min(nx-xc, xc)
+        #~ dy = min(ny-yc, yc)
+        #~ xslice = slice(int(xc-dx), int(xc+dx))
+        #~ yslice = slice(int(yc-dy), int(yc+dy))
+        #~ # Limit to region that can be rotated around center:
+        #~ image = image[yslice, xslice]
+        #~ image_180 = image[::-1, ::-1]
+
+        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
+        ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
+        asym = (ap_abs_diff - ap.area()*self._sky_asymmetry) / ap_abs_flux
+
+        return asym
+
+    @lazyproperty
+    def asymmetry(self):
+        # Preliminary calculation
+        
+        center_0 = np.array([self._xc_stamp, self._yc_stamp])
+        
+        return self._asymmetry_function(center_0)
+        
 
 def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
                  eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
-                 n_sigma_outlier=10):
+                 n_sigma_outlier=10, border_size=5, skybox_size=20,
+                 petro_extent=1.5):
     """
     Calculate the morphological parameters of all sources in ``image``
     as defined by ``segmap``.
@@ -396,6 +507,17 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
         outlier, relative to its 8 neighbors. This parameter only
         takes effect when ``remove_outliers`` is `True`. The default
         value is 10.
+    border_size : scalar, optional
+        The number of pixels that are skipped from each border of the
+        "postage stamp" image cutout when finding the skybox. The
+        default is 5 pixels.
+    skybox_size : scalar, optional
+        The size in pixels of the (square) "skybox" used to measure
+        properties of the image background. The default is 20 pixels.
+    petro_extent : float, optional
+        The radius of the circular aperture used for the asymmetry
+        calculation, in units of the circular Petrosian radius. The
+        default value is 1.5.
 
     Returns
     -------
@@ -418,7 +540,9 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
         sources_morph.append(SourceMorphology(
             image, segmap, label, mask=mask, cutout_extent=cutout_extent,
             eta=eta, petro_sigma_fraction=petro_sigma_fraction,
-            remove_outliers=remove_outliers, n_sigma_outlier=n_sigma_outlier))
+            remove_outliers=remove_outliers, n_sigma_outlier=n_sigma_outlier,
+            border_size=border_size, skybox_size=skybox_size,
+            petro_extent=petro_extent))
 
     return sources_morph
 
