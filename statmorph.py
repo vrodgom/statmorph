@@ -38,11 +38,13 @@ class SourceMorphology(object):
         radius, the mean flux at the edge of the aperture divided by
         the mean flux within the aperture is equal to ``eta``. The
         default value is typically set to 0.2 (Petrosian 1976).
-    petro_sigma_fraction : float, optional
-        The fraction of the Petrosian radius used as a smoothing scale
-        in order to define the pixels that belong to the galaxy, at
-        least for the calculation of the Gini coefficient. The default
-        value is 0.2.
+    petro_fraction_gini : float, optional
+        In the Gini calculation, this is the fraction of the Petrosian
+        "radius" used as a smoothing scale in order to define the pixels
+        that belong to the galaxy. The default value is 0.2.
+    petro_fraction_cas : float, optional
+        In the CAS calculations, this is the fraction of the Petrosian
+        radius used as a smoothing scale. The default value is 0.25.
     remove_outliers : bool, optional
         If `True`, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``. This is the
@@ -72,12 +74,14 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
+                 eta=0.2, petro_fraction_gini=0.2, petro_fraction_cas=0.25,
+                 remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
                  petro_extent=1.5):
         self._cutout_extent = cutout_extent
         self._eta = eta
-        self._petro_sigma_fraction = petro_sigma_fraction
+        self._petro_fraction_gini = petro_fraction_gini
+        self._petro_fraction_cas = petro_fraction_cas
         self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
         self._border_size = border_size
@@ -293,7 +297,7 @@ class SourceMorphology(object):
         
         """
         # Smooth image
-        petro_sigma = self._petro_sigma_fraction * self.petrosian_radius_ellip
+        petro_sigma = self._petro_fraction_gini * self.petrosian_radius_ellip
         
         # TMP: Match IDL implementation (1/10 of fwhm)
         petro_sigma = petro_sigma * gaussian_sigma_to_fwhm / 2.0
@@ -413,10 +417,23 @@ class SourceMorphology(object):
         bkg_180 = bkg[::-1, ::-1]
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
 
+    @lazyproperty
+    def _sky_smoothness(self):
+        """
+        Smoothness of the background.
+        """
+        bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
+
+        # If the smoothing "boxcar" is larger than the skybox itself,
+        # this just sets all values equal to the mean:
+        boxcar_size = int(self._petro_fraction_cas * self.petrosian_radius_circ)
+        bkg_smooth = ndi.uniform_filter(bkg, size=boxcar_size)
+
+        return np.sum(np.abs(bkg_smooth - bkg)) / float(bkg.size)
+
     def _asymmetry_function(self, center):
         """
         Helper function to determine the asymmetry and center of asymmetry.
-        
         """
         r = self._petro_extent * self.petrosian_radius_circ
         ap = photutils.CircularAperture(center, r)
@@ -502,9 +519,32 @@ class SourceMorphology(object):
         
         return 5.0 * np.log10(r_80 / r_20)
 
+    @lazyproperty
+    def smoothness(self):
+        """
+        Calculate smoothness (a.k.a. clumpiness) as described in
+        Lotz et al. (2004).
+        """
+        r = self._petro_extent * self.petrosian_radius_circ
+        ap = photutils.CircularAperture(self._asymmetry_center, r)
+
+        image = self._cutout_stamp_maskzeroed_double
+        
+        boxcar_size = int(self._petro_fraction_cas * self.petrosian_radius_circ)
+        image_smooth = ndi.uniform_filter(image, size=boxcar_size)
+        
+        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
+        ap_abs_diff = ap.do_photometry(
+            np.abs(image_smooth - image), method='exact')[0][0]
+        S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+
+        return S
+
+
 
 def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_sigma_fraction=0.2, remove_outliers=False,
+                 eta=0.2, petro_fraction_gini=0.2, petro_fraction_cas=0.25,
+                 remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
                  petro_extent=1.5):
     """
@@ -533,11 +573,13 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
         radius, the mean flux at the edge of the aperture divided by
         the mean flux within the aperture is equal to ``eta``. The
         default value is typically set to 0.2 (Petrosian 1976).
-    petro_sigma_fraction : float, optional
-        The fraction of the Petrosian radius used as a smoothing scale
-        in order to define the pixels that belong to the galaxy, at
-        least for the calculation of the Gini coefficient. The default
-        value is 0.2.
+    petro_fraction_gini : float, optional
+        In the Gini calculation, this is the fraction of the Petrosian
+        "radius" used as a smoothing scale in order to define the pixels
+        that belong to the galaxy. The default value is 0.2.
+    petro_fraction_cas : float, optional
+        In the CAS calculations, this is the fraction of the Petrosian
+        radius used as a smoothing scale. The default value is 0.25.
     remove_outliers : bool, optional
         If `True`, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``. This is the
@@ -581,7 +623,8 @@ def source_morphology(image, segmap, mask=None, cutout_extent=1.5,
     for label in segmap.labels:
         sources_morph.append(SourceMorphology(
             image, segmap, label, mask=mask, cutout_extent=cutout_extent,
-            eta=eta, petro_sigma_fraction=petro_sigma_fraction,
+            eta=eta, petro_fraction_gini=petro_fraction_gini,
+            petro_fraction_cas=petro_fraction_cas,
             remove_outliers=remove_outliers, n_sigma_outlier=n_sigma_outlier,
             border_size=border_size, skybox_size=skybox_size,
             petro_extent=petro_extent))

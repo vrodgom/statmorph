@@ -49,6 +49,7 @@ print('Gini:', morph.gini)
 print('M20:', morph.m20)
 print('Asymmetry:', morph.asymmetry)
 print('Concentration:', morph.concentration)
+print('Smoothness:', morph.smoothness)
 
 hdulist_image.close()
 hdulist_segmap.close()
@@ -62,6 +63,7 @@ Gini: 0.582655879166
 M20: -1.94720368966
 Asymmetry: 0.17009201935
 Concentration: 3.20757730314
+Smoothness: 0.0979850445916
 
 ```
 
