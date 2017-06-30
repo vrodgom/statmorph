@@ -470,9 +470,37 @@ class SourceMorphology(object):
     @lazyproperty
     def asymmetry(self):
         """
-        Calculate asymmetry as in Lotz et al. (2004).
+        Calculate asymmetry as described in Lotz et al. (2004).
         """
         return self._asymmetry_function(self._asymmetry_center)
+
+    def _concentration_function(self, r, flux_fraction, flux_total):
+        """
+        Helper function to calculate the concentration.
+        """
+        ap = photutils.CircularAperture(self._asymmetry_center, r)
+        ap_flux = ap.do_photometry(
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
+
+        return ap_flux / flux_total - flux_fraction
+
+    @lazyproperty
+    def concentration(self):
+        """
+        Calculate concentration as described in Lotz et al. (2004).
+        """
+        r_min = 2.0
+        r_max = self._petro_extent * self.petrosian_radius_circ
+        ap_total = photutils.CircularAperture(self._asymmetry_center, r_max)
+        flux_total = ap_total.do_photometry(
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
+        
+        r_20 = opt.brentq(self._concentration_function, r_min, r_max,
+                          args=(0.2, flux_total), xtol=1e-6)
+        r_80 = opt.brentq(self._concentration_function, r_min, r_max,
+                          args=(0.8, flux_total), xtol=1e-6)
+        
+        return 5.0 * np.log10(r_80 / r_20)
 
 
 def source_morphology(image, segmap, mask=None, cutout_extent=1.5,

@@ -47,6 +47,8 @@ source_morphology = statmorph.source_morphology(image, segmap)
 morph = source_morphology[0]
 print('Gini:', morph.gini)
 print('M20:', morph.m20)
+print('Asymmetry:', morph.asymmetry)
+print('Concentration:', morph.concentration)
 
 hdulist_image.close()
 hdulist_segmap.close()
@@ -58,6 +60,8 @@ For Pan-STARRS galaxy **J235958.6+281704** in the g-band, this returns:
 ```
 Gini: 0.582655879166
 M20: -1.94720368966
+Asymmetry: 0.17009201935
+Concentration: 3.20757730314
 
 ```
 
