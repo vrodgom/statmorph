@@ -82,26 +82,22 @@ the package using its Zenodo record:
 T.B.D.
 
 * Additionally, if you use the Gini and M20 statistics, you should cite:
-
-** Abraham R. G., van den Bergh S., Nair P., 2003, ApJ, 588, 218
-** Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163.
+  * Abraham R. G., van den Bergh S., Nair P., 2003, ApJ, 588, 218
+  * Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163.
 
 * If you use the concentration, asymmetry and clumpiness (CAS) statistics,
 you should cite:
-
-** Bershady M. A., Jangren A., Conselice C. J., 2000, AJ, 119, 2645
-** Conselice C. J., 2003, ApJS, 147, 1
+  * Bershady M. A., Jangren A., Conselice C. J., 2000, AJ, 119, 2645
+  * Conselice C. J., 2003, ApJS, 147, 1
 
 * If you use the multimode, intensity and deviation (MID) statistics,
 you should cite:
-
-** Freeman P. E., Izbicki R., Lee A. B., Newman J. A., Conselice C. J.,
-   Koekemoer A. M., Lotz J. M., Mozena M., 2013, MNRAS, 434, 282
+  * Freeman P. E., Izbicki R., Lee A. B., Newman J. A., Conselice C. J.,
+    Koekemoer A. M., Lotz J. M., Mozena M., 2013, MNRAS, 434, 282
 
 * If you use the shape asymmetry statistic, you should cite:
-
-** Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
-Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
+  * Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
+    Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
 
 The list of references above is provided as a starting point. Please see
 the references for further information.
