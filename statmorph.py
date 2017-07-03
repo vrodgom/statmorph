@@ -1,3 +1,10 @@
+"""
+Python code for calculating non-parametric morphological diagnostics
+of galaxy images.
+"""
+# Author: Vicente Rodriguez-Gomez <vrg@jhu.edu>
+# Licensed under a 3-Clause BSD License.
+
 import numpy as np
 import time
 import scipy.optimize as opt

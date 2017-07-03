@@ -1,7 +1,7 @@
 # statmorph
 
-Python code for calculating non-parametric morphological parameters,
-following the methodology of Lotz et al. (2004).
+Python code for calculating non-parametric morphological diagnostics
+of galaxy images, following the methodology of Lotz et al. (2004).
 
 ### Brief description ###
 
@@ -76,3 +76,7 @@ Smoothness: 0.0979850445916
 ### Acknowledgments ###
 
 * Based on IDL and Python code by Jennifer Lotz and Greg Snyder.
+
+### Licensing ###
+
+* Licensed under a 3-Clause BSD License.
