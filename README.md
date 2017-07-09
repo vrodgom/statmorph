@@ -94,6 +94,7 @@ you should cite:
 you should cite:
   * Freeman P. E., Izbicki R., Lee A. B., Newman J. A., Conselice C. J.,
     Koekemoer A. M., Lotz J. M., Mozena M., 2013, MNRAS, 434, 282
+  * Peth M. A. et al., 2016, MNRAS, 458, 963
 
 * If you use the shape asymmetry statistic, you should cite:
   * Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,

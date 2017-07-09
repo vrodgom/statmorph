@@ -546,6 +546,96 @@ class SourceMorphology(object):
 
         return S
 
+    @lazyproperty
+    def _segmap_mid(self):
+        """
+        Create a new segmentation map as described in Section 4.3 from
+        Freeman et al. (2013).
+        """
+        image = self._cutout_stamp_maskzeroed_double
+        sorted_pixelvals = np.sort(image.flatten())[::-1]
+        npixels = sorted_pixelvals.size
+
+        mean_flux = np.cumsum(sorted_pixelvals) / np.arange(1, npixels+1)
+        locs_bright = np.flatnonzero(sorted_pixelvals / mean_flux >= self._eta)
+        threshold = sorted_pixelvals[locs_bright[-1]]
+        segmap_mid = np.where(image >= threshold, 1, 0)
+        
+        return segmap_mid
+
+    def _multimode_function(self, threshold, normalized_image):
+        """
+        Helper function to calculate the multimode statistic.
+        """
+        boolean_array = normalized_image >= threshold
+        assert(np.sum(boolean_array) > 0)
+
+        # Label connected regions.
+        s = ndi.generate_binary_structure(2, 2)  # include corners
+        labeled_array, num_features = ndi.label(boolean_array, structure=s)
+        
+        # Zero is reserved for non-labeled pixels:
+        labeled_array_nonzero = labeled_array[labeled_array != 0]
+        labels, counts = np.unique(labeled_array_nonzero, return_counts=True)
+        sorted_counts = np.sort(counts)[::-1]
+
+        return sorted_counts
+
+    def _multimode_minimizer(self, threshold, normalized_image):
+        """
+        Another helper function to calculate the multimode statistic.
+        """
+        sorted_counts = self._multimode_function(threshold, normalized_image)
+        if len(sorted_counts) == 1:
+            ratio = 0.0
+        else:
+            ratio = float(sorted_counts[1])**2 / float(sorted_counts[0])
+
+        print('Current ratio:', ratio)
+        
+        return -1.0 * ratio
+
+    @lazyproperty
+    def multimode(self):
+        """
+        Calculate the multimode statistic as described in Peth et al. (2016).
+        
+        Notes
+        -----
+        Following the IDL implementation by Mike Peth (based on previous
+        code by Peter Freeman and Jennifer Lotz), we search for the maximum
+        threshold value l that maximizes A2(l) / A1(l) * A2(l), even though
+        the return value is A2(l) / A1(l). This somewhat contradicts the
+        associated publication (Peth et al. 2016), where it is stated that
+        the maximized quantity is A2(l) / A1(l) itself.
+        """
+        image = np.where(self._segmap_mid,
+                         self._cutout_stamp_maskzeroed_double, 0.0)
+        
+        normalized_image = image / np.max(image)
+
+        # For now, we follow the original IDL implementation. Optimize later.
+        dx = 0.005
+        threshold_array = np.arange(0.0, 1.0, dx)
+        ratio_array = np.zeros_like(threshold_array)
+        for i, threshold in enumerate(threshold_array):
+            ratio_array[i] = -1.0 * self._multimode_minimizer(threshold, normalized_image)
+        # Remove nan values, if any
+        locs = ~np.isnan(ratio_array)
+        threshold_array = threshold_array[locs]
+        ratio_array = ratio_array[locs]
+        # Finally
+        i_max = np.argmax(ratio_array)
+        optimal_threshold = threshold_array[i_max]
+
+        sorted_counts = self._multimode_function(optimal_threshold, normalized_image)
+        m_prime = sorted_counts[1] / sorted_counts[0]
+
+        print('Optimal threshold:', optimal_threshold)
+        
+        return m_prime
+        
+
 
 def source_morphology(image, segmap, **kwargs):
     """
