@@ -546,68 +546,6 @@ class SourceMorphology(object):
 
         return S
 
-    #~ @lazyproperty
-    #~ def _segmap_mid(self):
-        #~ """
-        #~ Create a new segmentation map as described in Section 4.3 from
-        #~ Freeman et al. (2013). This is a somewhat literal translation
-        #~ of the IDL code.
-        #~ """
-        #~ min_new_pixels = 16
-        #~ # We don't actually use this:
-        #~ min_level = 10
-        
-        #~ image = self._cutout_stamp_maskzeroed_double
-        #~ sorted_pixelvals = np.sort(image.flatten())
-        #~ npix = sorted_pixelvals.size
-
-        #~ quantiles = 0.99 - 0.005*np.arange(198)
-
-        #~ # Instead of assuming that the main segment is at the center
-        #~ # of the stamp, use the centroid:
-        #~ ic = int(np.floor(self._yc_stamp))
-        #~ jc = int(np.floor(self._xc_stamp))
-
-        #~ # Neighbor "footprint" for growing regions, including corners:
-        #~ s = ndi.generate_binary_structure(2, 2)
-        
-        #~ for k in range(len(quantiles)):
-            #~ threshold = sorted_pixelvals[int(quantiles[k]*npix)]
-            #~ boolean_array = image >= threshold
-            #~ assert(np.sum(boolean_array) > 0)
-            #~ labeled_array, num_features = ndi.label(boolean_array, structure=s)
-            #~ if labeled_array[ic, jc] == 0:
-                #~ print('Centroid is empty at level:', levels[k])
-                #~ continue
-
-            #~ if k > 0:
-                #~ locs_main_clump_new = labeled_array == labeled_array[ic, jc]
-                #~ locs_new_pixels = locs_main_clump_new ^ locs_main_clump_old
-                #~ num_new_pixels = np.sum(locs_new_pixels)
-                #~ # Sanity check
-                #~ assert(num_new_pixels == np.sum(locs_main_clump_new) -
-                                         #~ np.sum(locs_main_clump_old))
-
-                #~ if num_new_pixels < min_new_pixels:
-                    #~ print('Skipping level:', levels[k])
-                    #~ continue
-
-                #~ mean_flux_main_clump_new = np.mean(image[locs_main_clump_new])
-                #~ mean_flux_new_pixels = np.mean(image[locs_new_pixels])
-
-                #~ if mean_flux_new_pixels / mean_flux_main_clump_new < self._eta:
-                    #~ segmap_float = np.float64(locs_main_clump_new)
-                    #~ # Regularize a bit the shape of the segmap:
-                    #~ segmap_float = ndi.uniform_filter(segmap_float, size=3)
-                    #~ segmap = segmap_float > 0.5
-                    #~ return segmap
-
-            #~ # For next iteration:
-            #~ locs_main_clump_old = labeled_array == labeled_array[ic, jc]
-        
-        #~ # Should not reach this point
-        #~ assert(False)
-
     def _quantile(self, q, sorted_pixelvals):
         """
         For a sorted 1-d array of pixels (in increasing order),
@@ -639,7 +577,8 @@ class SourceMorphology(object):
 
         labeled_array, num_features = ndi.label(boolean_array, structure=s)
         if labeled_array[ic, jc] == 0:
-            raise Exception('Centroid is empty at quantile', q)
+            # Centroid is not part of the main clump.
+            return None
 
         return labeled_array == labeled_array[ic, jc]
 
@@ -657,6 +596,21 @@ class SourceMorphology(object):
 
         return mean_flux_new_pixels / mean_flux_main_clump - self._eta
 
+    def _segmap_mid_upper_bound(self, image, sorted_pixelvals):
+        """
+        Another helper function for the MID segmap. This one
+        automatically finds an upper limit for the quantile that
+        determines the MID segmap.
+        """
+        num_bright_pixels = 2  # starting point
+        while num_bright_pixels < image.size:
+            q = 1.0 - float(num_bright_pixels) / float(image.size)
+            if self._get_main_clump(q, image, sorted_pixelvals) is None:
+                num_bright_pixels = 2 * num_bright_pixels
+            else:
+                return q
+        raise Exception('Should not reach this point.')
+
     @lazyproperty
     def _segmap_mid(self):
         """
@@ -666,16 +620,16 @@ class SourceMorphology(object):
         Notes
         -----
         This implementation is independent of the number of quantiles
-        used in the calculation.
+        used in the calculation, as well as other parameters.
         """
         image = self._cutout_stamp_maskzeroed_double
         sorted_pixelvals = np.sort(image.flatten())
         
-        main_clump_minsize = 20
         q_min = 0.0
-        q_max = 1.0 - float(main_clump_minsize) / float(image.size)
+        q_max = self._segmap_mid_upper_bound(image, sorted_pixelvals)
+        xtol = 1.0 / float(image.size)
         q = opt.brentq(self._segmap_mid_function, 0.0, q_max,
-                       args=(image, sorted_pixelvals), xtol=1e-3)
+                       args=(image, sorted_pixelvals), xtol=xtol)
         locs_main_clump = self._get_main_clump(q, image, sorted_pixelvals)
 
         # Regularize a bit the shape of the segmap:
@@ -758,7 +712,6 @@ class SourceMorphology(object):
         print('Optimal threshold:', optimal_threshold)
         
         return m_prime
-        
 
 
 def source_morphology(image, segmap, **kwargs):
