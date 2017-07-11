@@ -16,6 +16,17 @@ import photutils
 
 __all__ = ['SourceMorphology', 'source_morphology']
 
+def _quantile(sorted_values, q):
+    """
+    For a sorted (in increasing order) 1-d array, return the
+    value corresponding to the quantile `q`.
+    """
+    assert((q >= 0) and (q <= 1))
+    if q == 1:
+        return sorted_values[-1]
+    else:
+        return sorted_values[int(q*len(sorted_values))]
+
 class SourceMorphology(object):
     """
     Class to measure the morphological parameters of a single labeled
@@ -150,6 +161,13 @@ class SourceMorphology(object):
         return np.float64(cutout_stamp)
 
     @lazyproperty
+    def _sorted_pixelvals_stamp(self):
+        """
+        Just the sorted pixel values of the postage stamp.
+        """
+        return np.sort(self._cutout_stamp_maskzeroed_double.flatten())
+
+    @lazyproperty
     def _dist_to_closest_corner(self):
         """
         The distance from the centroid to the closest corner of the
@@ -256,6 +274,10 @@ class SourceMorphology(object):
                                  r_min, r_max, xtol=1e-6)
 
         return rpetro_circ
+
+    ##################
+    # Gini-M20 stuff #
+    ##################
 
     @lazyproperty
     def _cutout_gini(self):
@@ -374,6 +396,10 @@ class SourceMorphology(object):
         m20 = np.log10(second_moment_20 / second_moment)
 
         return m20
+
+    #############
+    # CAS stuff #
+    #############
 
     @lazyproperty
     def _slice_skybox(self):
@@ -546,26 +572,21 @@ class SourceMorphology(object):
 
         return S
 
-    def _quantile(self, q, sorted_pixelvals):
-        """
-        For a sorted 1-d array of pixels (in increasing order),
-        return the pixel value corresponding to the quantile `q`.
-        """
-        assert((q >= 0) and (q <= 1))
-        if q == 1:
-            return sorted_pixelvals[-1]
-        else:
-            npix = sorted_pixelvals.size
-            return sorted_pixelvals[int(q*npix)]
+    #############
+    # MID stuff #
+    #############
 
-    def _get_main_clump(self, q, image, sorted_pixelvals):
+    def _segmap_mid_main_clump(self, q):
         """
         For a given quantile `q`, return a boolean array indicating
         the locations of pixels above `q` that are also part of
         the "main" clump.
         """
-        threshold = self._quantile(q, sorted_pixelvals)
-        boolean_array = image >= threshold
+        image = self._cutout_stamp_maskzeroed_double
+        sorted_pixelvals = self._sorted_pixelvals_stamp
+
+        threshold = _quantile(sorted_pixelvals, q)
+        above_threshold = image >= threshold
 
         # Instead of assuming that the main segment is at the center
         # of the stamp, we use the already-calculated centroid:
@@ -575,14 +596,14 @@ class SourceMorphology(object):
         # Neighbor "footprint" for growing regions, including corners:
         s = ndi.generate_binary_structure(2, 2)
 
-        labeled_array, num_features = ndi.label(boolean_array, structure=s)
+        labeled_array, num_features = ndi.label(above_threshold, structure=s)
         if labeled_array[ic, jc] == 0:
             # Centroid is not part of the main clump.
             return None
 
         return labeled_array == labeled_array[ic, jc]
 
-    def _segmap_mid_function(self, q, image, sorted_pixelvals):
+    def _segmap_mid_function(self, q):
         """
         Helper function to calculate the MID segmap.
         
@@ -590,22 +611,29 @@ class SourceMorphology(object):
         pixels at the level of `q` (within the main clump) divided by
         the mean of pixels above `q` (within the main clump).
         """
-        locs_main_clump = self._get_main_clump(q, image, sorted_pixelvals)
+        image = self._cutout_stamp_maskzeroed_double
+        sorted_pixelvals = self._sorted_pixelvals_stamp
+
+        locs_main_clump = self._segmap_mid_main_clump(q)
         mean_flux_main_clump = np.mean(image[locs_main_clump])
-        mean_flux_new_pixels = self._quantile(q, sorted_pixelvals)
+        mean_flux_new_pixels = _quantile(sorted_pixelvals, q)
 
         return mean_flux_new_pixels / mean_flux_main_clump - self._eta
 
-    def _segmap_mid_upper_bound(self, image, sorted_pixelvals):
+    @lazyproperty
+    def _segmap_mid_upper_bound(self):
         """
         Another helper function for the MID segmap. This one
         automatically finds an upper limit for the quantile that
         determines the MID segmap.
         """
+        image = self._cutout_stamp_maskzeroed_double
+        sorted_pixelvals = self._sorted_pixelvals_stamp
+
         num_bright_pixels = 2  # starting point
         while num_bright_pixels < image.size:
             q = 1.0 - float(num_bright_pixels) / float(image.size)
-            if self._get_main_clump(q, image, sorted_pixelvals) is None:
+            if self._segmap_mid_main_clump(q) is None:
                 num_bright_pixels = 2 * num_bright_pixels
             else:
                 return q
@@ -623,33 +651,33 @@ class SourceMorphology(object):
         used in the calculation, as well as other parameters.
         """
         image = self._cutout_stamp_maskzeroed_double
-        sorted_pixelvals = np.sort(image.flatten())
-        
+        sorted_pixelvals = self._sorted_pixelvals_stamp
+
+        # Find appropriate quantile using numerical solver
         q_min = 0.0
-        q_max = self._segmap_mid_upper_bound(image, sorted_pixelvals)
+        q_max = self._segmap_mid_upper_bound
         xtol = 1.0 / float(image.size)
-        q = opt.brentq(self._segmap_mid_function, 0.0, q_max,
-                       args=(image, sorted_pixelvals), xtol=xtol)
-        locs_main_clump = self._get_main_clump(q, image, sorted_pixelvals)
+        q = opt.brentq(self._segmap_mid_function, q_min, q_max, xtol=xtol)
 
         # Regularize a bit the shape of the segmap:
+        locs_main_clump = self._segmap_mid_main_clump(q)
         segmap_float = ndi.uniform_filter(np.float64(locs_main_clump), size=3)
         segmap = segmap_float > 0.5
-        
+
         return segmap
 
     def _multimode_function(self, threshold, normalized_image):
         """
         Helper function to calculate the multimode statistic.
         """
-        boolean_array = normalized_image >= threshold
-        assert(np.sum(boolean_array) > 0)
+        above_threshold = normalized_image >= threshold
+        assert(np.sum(above_threshold) > 0)
 
         # Neighbor "footprint", including corners:
         s = ndi.generate_binary_structure(2, 2)
 
         # Label connected regions:
-        labeled_array, num_features = ndi.label(boolean_array, structure=s)
+        labeled_array, num_features = ndi.label(above_threshold, structure=s)
 
         # Zero is reserved for non-labeled pixels:
         labeled_array_nonzero = labeled_array[labeled_array != 0]
