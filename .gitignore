@@ -9,6 +9,5 @@ __pycache__/*
 *.prof
 
 # Other, custom
-test_morph.py
-test_segmap.py
-notes_to_self.txt
+*.txt
+test_*.py

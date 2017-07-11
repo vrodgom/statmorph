@@ -666,17 +666,32 @@ class SourceMorphology(object):
 
         return segmap
 
-    def _multimode_function(self, threshold, normalized_image):
+    @lazyproperty
+    def _cutout_mid(self):
+        """
+        Just apply the MID segmap to the postage stamp cutout.
+        """
+        return np.where(self._segmap_mid,
+                        self._cutout_stamp_maskzeroed_double, 0.0)
+
+    @lazyproperty
+    def _sorted_pixelvals_mid(self):
+        """
+        Just the sorted pixel values of the MID cutout.
+        """
+        return np.sort(self._cutout_mid.flatten())
+
+    def _multimode_function(self, q):
         """
         Helper function to calculate the multimode statistic.
+        Returns the sorted "areas" of the clumps at quantile `q`.
         """
-        above_threshold = normalized_image >= threshold
-        assert(np.sum(above_threshold) > 0)
+        threshold = _quantile(self._sorted_pixelvals_mid, q)
+        above_threshold = self._cutout_mid >= threshold
 
-        # Neighbor "footprint", including corners:
+        # Neighbor "footprint" for growing regions, including corners:
         s = ndi.generate_binary_structure(2, 2)
 
-        # Label connected regions:
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
 
         # Zero is reserved for non-labeled pixels:
@@ -686,18 +701,18 @@ class SourceMorphology(object):
 
         return sorted_counts
 
-    def _multimode_ratio(self, threshold, normalized_image):
+    def _multimode_ratio(self, q):
         """
         Return the "ratio" (A2/A1)*A2 multiplied by -1, which is
         used for minimization.
         """
-        sorted_counts = self._multimode_function(threshold, normalized_image)
+        sorted_counts = self._multimode_function(q)
         if len(sorted_counts) == 1:
             ratio = 0.0
         else:
             ratio = float(sorted_counts[1])**2 / float(sorted_counts[0])
 
-        print('Current ratio:', ratio)
+        print('Ratio (q=%g) = %g' % (q, ratio))
         
         return -1.0 * ratio
 
@@ -715,29 +730,20 @@ class SourceMorphology(object):
         associated publication (Peth et al. 2016), where it is stated that
         the maximized quantity is A2(l) / A1(l) itself.
         """
-        image = np.where(self._segmap_mid,
-                         self._cutout_stamp_maskzeroed_double, 0.0)
-        
-        normalized_image = image / np.max(image)
 
-        # For now, we follow the original IDL implementation. Optimize later.
-        dx = 0.005
-        threshold_array = np.arange(0.0, 1.0, dx)
-        ratio_array = np.zeros_like(threshold_array)
-        for i, threshold in enumerate(threshold_array):
-            ratio_array[i] = -1.0 * self._multimode_ratio(threshold, normalized_image)
-        # Remove nan values, if any
-        locs = ~np.isnan(ratio_array)
-        threshold_array = threshold_array[locs]
-        ratio_array = ratio_array[locs]
-        # Finally
-        i_max = np.argmax(ratio_array)
-        optimal_threshold = threshold_array[i_max]
+        #~ quantile_array = 0.5 + 0.02*np.arange(25)
+        quantile_array = np.linspace(0.5, 1.0, 200)
 
-        sorted_counts = self._multimode_function(optimal_threshold, normalized_image)
+        ratio_array = np.zeros_like(quantile_array)
+        for k, q in enumerate(quantile_array):
+            ratio_array[k] = -1.0 * self._multimode_ratio(q)
+        k_max = np.argmax(ratio_array)
+        q = quantile_array[k_max]
+
+        print('Optimal threshold:', q)
+
+        sorted_counts = self._multimode_function(q)
         m_prime = sorted_counts[1] / sorted_counts[0]
-
-        print('Optimal threshold:', optimal_threshold)
         
         return m_prime
 
