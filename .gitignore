@@ -4,6 +4,7 @@ __pycache__/*
 
 # Images
 *.png
+plots/*
 
 # Profiling
 *.prof

@@ -19,7 +19,7 @@ __all__ = ['SourceMorphology', 'source_morphology']
 def _quantile(sorted_values, q):
     """
     For a sorted (in increasing order) 1-d array, return the
-    value corresponding to the quantile `q`.
+    value corresponding to the quantile ``q``.
     """
     assert((q >= 0) and (q <= 1))
     if q == 1:
@@ -36,7 +36,7 @@ class SourceMorphology(object):
     ----------
     image : array-like
         The 2D image containing the sources of interest.
-    segmap : array-like (int) or `photutils.SegmentationImage`
+    segmap : array-like (int) or ``photutils.SegmentationImage``
         A 2D segmentation map where different sources are 
         labeled with different positive integer values.
         A value of zero is reserved for the background.
@@ -44,7 +44,7 @@ class SourceMorphology(object):
         A label indicating the source of interest.
     mask : array-like (bool), optional
         A 2D array with the same size as ``image``, where pixels
-        set to `True` are ignored from all calculations.
+        set to ``True`` are ignored from all calculations.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the size of the segment containing the source (the original
@@ -61,15 +61,15 @@ class SourceMorphology(object):
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
     remove_outliers : bool, optional
-        If `True`, remove outlying pixels as described in Lotz et al.
+        If ``True``, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``. This is the
         most time-consuming operation and, at least for reasonably
         clean data, it should have a negligible effect on Gini
-        coefficient. By default it is set to `False`.
+        coefficient. By default it is set to ``False``.
     n_sigma_outlier : scalar, optional
         The number of standard deviations that define a pixel as an
         outlier, relative to its 8 neighbors. This parameter only
-        takes effect when ``remove_outliers`` is `True`. The default
+        takes effect when ``remove_outliers`` is ``True``. The default
         value is 10.
     border_size : scalar, optional
         The number of pixels that are skipped from each border of the
@@ -706,15 +706,17 @@ class SourceMorphology(object):
         Return the "ratio" (A2/A1)*A2 multiplied by -1, which is
         used for minimization.
         """
-        sorted_counts = self._multimode_function(q)
-        if len(sorted_counts) == 1:
-            ratio = 0.0
+        invalid = 99.0  # just a very large number (>> 1)
+        if (q <= 0) or (q >= 1):
+            ratio = invalid
         else:
-            ratio = float(sorted_counts[1])**2 / float(sorted_counts[0])
+            sorted_counts = self._multimode_function(q)
+            if len(sorted_counts) == 1:
+                ratio = invalid
+            else:
+                ratio = -1.0 * float(sorted_counts[1]) / float(sorted_counts[0])
 
-        print('Ratio (q=%g) = %g' % (q, ratio))
-        
-        return -1.0 * ratio
+        return ratio
 
     @lazyproperty
     def multimode(self):
@@ -723,29 +725,55 @@ class SourceMorphology(object):
         
         Notes
         -----
-        Following the IDL implementation by Mike Peth (based on previous
-        code by Peter Freeman and Jennifer Lotz), we search for the maximum
-        threshold value l that maximizes A2(l) / A1(l) * A2(l), even though
-        the return value is A2(l) / A1(l). This somewhat contradicts the
+        The IDL implementation by Mike Peth (based on previous code by
+        Peter Freeman) actually maximizes A2(l) / A1(l) * A2(l), even
+        though the return value is A2(l) / A1(l). This somewhat contradicts the
         associated publication (Peth et al. 2016), where it is stated that
-        the maximized quantity is A2(l) / A1(l) itself.
+        the maximized quantity is A2(l) / A1(l) itself. Here we try to
+        maximize A2(l) / A1(l).
         """
 
-        #~ quantile_array = 0.5 + 0.02*np.arange(25)
-        quantile_array = np.linspace(0.5, 1.0, 200)
+        # The quantity A2/A1 is tricky to minimize. We do so
+        # in two stages: first using brute-force, as in the original
+        # implementation, followed by a finer search using the
+        # basin-hopping method.
 
+        # STAGE 1: brute-force
+        q_min = 0.5  # as in the IDL implementation
+        q_max = 1.0
+        stepsize = 0.02  # as in the IDL implementation
+
+        start = time.time()
+        print('Minimizing (brute force)...')
+        quantile_array = np.arange(q_min, q_max, stepsize)
         ratio_array = np.zeros_like(quantile_array)
         for k, q in enumerate(quantile_array):
             ratio_array[k] = -1.0 * self._multimode_ratio(q)
         k_max = np.argmax(ratio_array)
-        q = quantile_array[k_max]
+        q0 = quantile_array[k_max]
+        ratio_max = ratio_array[k_max]
+        print('q (brute-force):', q0)
+        print('ratio (brute-force):', ratio_max)
+        print('Time: %g s.\n' % (time.time() - start))
 
-        print('Optimal threshold:', q)
+        # STAGE 2: basin-hopping method
+        niter = 10
+        T = 0.5 * ratio_max
 
-        sorted_counts = self._multimode_function(q)
-        m_prime = sorted_counts[1] / sorted_counts[0]
-        
-        return m_prime
+        start = time.time()
+        print('Minimizing (basin-hopping method)...')
+        print('T =', T)
+        # For debugging, add the options "interval=niter, disp=True"
+        res = opt.basinhopping(self._multimode_ratio, q0,
+            niter=niter, T=T, stepsize=stepsize,
+            minimizer_kwargs={"method": "Nelder-Mead"})
+        q_final = res.x
+        ratio_final = -1.0 * res.fun
+        print('q (basin-hopping):', q_final)
+        print('ratio (brute-force):', ratio_final)
+        print('Time: %g s.' % (time.time() - start))
+
+        return ratio_final
 
 
 def source_morphology(image, segmap, **kwargs):
