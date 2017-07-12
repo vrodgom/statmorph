@@ -512,7 +512,8 @@ class SourceMorphology(object):
         center_0 = np.array([self._xc_stamp, self._yc_stamp])
         
         # Find minimum at pixel precision (xtol=1)
-        center_asym = opt.fmin(self._asymmetry_function, center_0, xtol=1.0)
+        center_asym = opt.fmin(self._asymmetry_function, center_0, xtol=1.0,
+                               disp=0)
 
         return np.floor(center_asym)
 
@@ -704,10 +705,10 @@ class SourceMorphology(object):
     def _multimode_ratio(self, q):
         """
         Return the "ratio" (A2/A1)*A2 multiplied by -1, which is
-        used for minimization.
+        used for minimization. Note that the ratio is negative.
         """
-        invalid = 99.0  # just a very large number (>> 1)
-        if (q <= 0) or (q >= 1):
+        invalid = 99.0  # high "energy" for the basin-hopping algorithm
+        if (q < 0) or (q > 1):
             ratio = invalid
         else:
             sorted_counts = self._multimode_function(q)
@@ -729,51 +730,66 @@ class SourceMorphology(object):
         Peter Freeman) actually maximizes A2(l) / A1(l) * A2(l), even
         though the return value is A2(l) / A1(l). This somewhat contradicts the
         associated publication (Peth et al. 2016), where it is stated that
-        the maximized quantity is A2(l) / A1(l) itself. Here we try to
-        maximize A2(l) / A1(l).
+        the maximized quantity is A2(l) / A1(l) itself. Here we follow
+        Peth et al. (2016) and maximize A2(l) / A1(l).
         """
+        invalid = 99.0  # high "energy" for the basin-hopping algorithm
+        npix = self._cutout_mid.size
 
-        # The quantity A2/A1 is tricky to minimize. We do so
+        # The original IDL implementation only considers quantiles
+        # in the range [0.5, 1.0]. While this seems useful in practice,
+        # in theory the maximal A2/A1 could also happen in the
+        # percentile range [0.0, 0.5], so we take the safer, more
+        # general approach and search over [0.0, 1.0].
+        q_min = 0.0
+        q_max = 1.0
+
+        # The quantity A2/A1 is tricky to optimize. We do so
         # in two stages: first using brute-force, as in the original
         # implementation, followed by a finer search using the
         # basin-hopping method.
-
+        
         # STAGE 1: brute-force
-        q_min = 0.5  # as in the IDL implementation
-        q_max = 1.0
-        stepsize = 0.02  # as in the IDL implementation
 
-        start = time.time()
-        print('Minimizing (brute force)...')
-        quantile_array = np.arange(q_min, q_max, stepsize)
-        ratio_array = np.zeros_like(quantile_array)
-        for k, q in enumerate(quantile_array):
-            ratio_array[k] = -1.0 * self._multimode_ratio(q)
-        k_max = np.argmax(ratio_array)
-        q0 = quantile_array[k_max]
-        ratio_max = ratio_array[k_max]
-        print('q (brute-force):', q0)
-        print('ratio (brute-force):', ratio_max)
-        print('Time: %g s.\n' % (time.time() - start))
+        # We start with a relatively coarse separation between the
+        # quantiles, twice the value used in the original IDL
+        # implementation. If every calculated ratio is invalid, we
+        # try a smaller size.
+        mid_stepsize = 0.04
+
+        ratio_min = invalid
+        while mid_stepsize > 1.0 / npix:
+            quantile_array = np.arange(q_min, q_max, mid_stepsize)
+            ratio_array = invalid * np.ones_like(quantile_array)
+            for k, q in enumerate(quantile_array):
+                ratio_array[k] = self._multimode_ratio(q)
+            k_min = np.argmin(ratio_array)
+            q0 = quantile_array[k_min]
+            ratio_min = ratio_array[k_min]
+
+            if ratio_min < 0:  # valid ratios should be negative
+                break
+            else:
+                mid_stepsize = mid_stepsize / 2.0
+                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
 
         # STAGE 2: basin-hopping method
-        niter = 10
-        T = 0.5 * ratio_max
 
-        start = time.time()
-        print('Minimizing (basin-hopping method)...')
-        print('T =', T)
-        # For debugging, add the options "interval=niter, disp=True"
+        # The results seem quite robust to changes in the
+        # following two parameters, so I just leave them
+        # hardcoded here for now:
+        mid_bh_niter = 5
+        mid_bh_rel_temp = 0.2
+
+        temp = -1.0 * ratio_min * mid_bh_rel_temp
         res = opt.basinhopping(self._multimode_ratio, q0,
-            niter=niter, T=T, stepsize=stepsize,
-            minimizer_kwargs={"method": "Nelder-Mead"})
-        q_final = res.x
-        ratio_final = -1.0 * res.fun
-        print('q (basin-hopping):', q_final)
-        print('ratio (brute-force):', ratio_final)
-        print('Time: %g s.' % (time.time() - start))
+            minimizer_kwargs={"method": "Nelder-Mead"},
+            niter=mid_bh_niter, T=temp, stepsize=mid_stepsize,
+            interval=mid_bh_niter, disp=False)
+        q_final = res.x[0]
+        ratio_final = res.fun
 
-        return ratio_final
+        return -1.0 * ratio_final
 
 
 def source_morphology(image, segmap, **kwargs):
