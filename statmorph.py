@@ -824,40 +824,71 @@ class SourceMorphology(object):
         Returns a labeled array indicating regions around local maxima.
         
         """
-        local_maxi = skimage.feature.peak_local_max(
-            self._cutout_mid_smooth, indices=False, num_peaks=np.inf)
-        markers, num_markers = ndi.label(local_maxi)
-        if num_markers > 10000:
-            print('Warning: Maybe too many peaks (%d). ' % (num_markers) +
-                  'Try limiting with the "num_peaks" keyword argument.')
+        peaks = skimage.feature.peak_local_max(
+            self._cutout_mid_smooth, indices=True, num_peaks=np.inf)
+        num_peaks = peaks.shape[0]
+        peak_labels = np.arange(num_peaks, dtype=np.int64)
+        ypeak, xpeak = peaks.T
+
+        markers = np.zeros(self._cutout_mid_smooth.shape, dtype=np.int64)
+        markers[ypeak, xpeak] = peak_labels
 
         mask = self._cutout_mid_smooth > 0
         labeled_array = skimage.morphology.watershed(
             -self._cutout_mid_smooth, markers, connectivity=2, mask=mask)
 
-        return labeled_array
+        return labeled_array, peak_labels, xpeak, ypeak
+
+    @lazyproperty
+    def _intensity_sums(self):
+        """
+        Helper function to calculate the intensity (I) and
+        deviation (D) statistics.
+        """
+        labeled_array, peak_labels, xpeak, ypeak = self._watershed_mid
+        num_peaks = len(peak_labels)
         
+        flux_sums = np.zeros(num_peaks, dtype=np.float64)
+        for k, label in enumerate(peak_labels):
+            locs = labeled_array == label
+            flux_sums[k] = np.sum(self._cutout_mid_smooth[locs])
+        sid = np.argsort(flux_sums)[::-1]
+        sorted_flux_sums = flux_sums[sid]
+        sorted_xpeak = xpeak[sid]
+        sorted_ypeak = ypeak[sid]
+        
+        return sorted_flux_sums, sorted_xpeak, sorted_ypeak
+
     @lazyproperty
     def intensity(self):
         """
         Calculate the intensity (I) statistic as described in
         Peth et al. (2016).
         """
-        labeled_array = self._watershed_mid
-        labels = np.unique(labeled_array)
-        num_labels = len(labels)
-
-        if num_labels <= 1:
-            i_prime = 0.0
+        sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
+        if len(sorted_flux_sums) <= 1:
+            return 0.0
         else:
-            flux_sums = np.zeros(num_labels, dtype=np.float64)
-            for k, label in enumerate(labels):
-                locs = labeled_array == label
-                flux_sums[k] = np.sum(self._cutout_mid_smooth[locs])
-            sorted_flux_sums = np.sort(flux_sums)[::-1]
-            i_prime = sorted_flux_sums[1] / sorted_flux_sums[0]
+            return sorted_flux_sums[1] / sorted_flux_sums[0]
+
+    @lazyproperty
+    def deviation(self):
+        """
+        Calculate the deviation (D) statistic as described in
+        Peth et al. (2016).
+        """
+        sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
+        xp = sorted_xpeak[0] + 0.5  # center of pixel
+        yp = sorted_ypeak[0] + 0.5
         
-        return i_prime
+        # Calculate centroid
+        m = skimage.measure.moments(self._cutout_mid, order=1)
+        yc = m[0, 1] / m[0, 0]
+        xc = m[1, 0] / m[0, 0]
+
+        area = np.sum(self._segmap_mid)
+
+        return np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
 
 
 def source_morphology(image, segmap, **kwargs):
