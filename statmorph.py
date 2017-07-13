@@ -9,7 +9,9 @@ import numpy as np
 import time
 import scipy.optimize as opt
 import scipy.ndimage as ndi
-import skimage.measure as msr
+import skimage.measure
+import skimage.feature
+import skimage.morphology
 from astropy.utils import lazyproperty
 from astropy.stats import gaussian_sigma_to_fwhm
 import photutils
@@ -374,12 +376,12 @@ class SourceMorphology(object):
         image = np.float64(image)  # skimage wants this
 
         # Calculate centroid
-        m = msr.moments(image, order=1)
+        m = skimage.measure.moments(image, order=1)
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
 
         # Calculate second total central moment
-        mc = msr.moments_central(image, yc, xc, order=3)
+        mc = skimage.measure.moments_central(image, yc, xc, order=3)
         second_moment = mc[0, 2] + mc[2, 0]
 
         # Calculate threshold pixel value
@@ -389,7 +391,7 @@ class SourceMorphology(object):
 
         # Calculate second moment of the brightest pixels
         image_20 = np.where(image >= threshold, image, 0.0)
-        mc_20 = msr.moments_central(image_20, yc, xc, order=3)
+        mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=3)
         second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
 
         # Normalize
@@ -661,8 +663,10 @@ class SourceMorphology(object):
         q = opt.brentq(self._segmap_mid_function, q_min, q_max, xtol=xtol)
 
         # Regularize a bit the shape of the segmap:
+        mid_boxcar_size = 3
         locs_main_clump = self._segmap_mid_main_clump(q)
-        segmap_float = ndi.uniform_filter(np.float64(locs_main_clump), size=3)
+        segmap_float = ndi.uniform_filter(
+            np.float64(locs_main_clump), size=mid_boxcar_size)
         segmap = segmap_float > 0.5
 
         return segmap
@@ -670,10 +674,13 @@ class SourceMorphology(object):
     @lazyproperty
     def _cutout_mid(self):
         """
-        Just apply the MID segmap to the postage stamp cutout.
+        Apply the MID segmap to the postage stamp cutout
+        and set negative pixels to zero.
         """
-        return np.where(self._segmap_mid,
+        image = np.where(self._segmap_mid,
                         self._cutout_stamp_maskzeroed_double, 0.0)
+        image[image < 0] = 0.0
+        return image
 
     @lazyproperty
     def _sorted_pixelvals_mid(self):
@@ -704,8 +711,8 @@ class SourceMorphology(object):
 
     def _multimode_ratio(self, q):
         """
-        Return the "ratio" (A2/A1)*A2 multiplied by -1, which is
-        used for minimization. Note that the ratio is negative.
+        For a given quantile ``q``, return the ratio A2/A1
+        multiplied by -1, which is used for minimization.
         """
         invalid = 99.0  # high "energy" for the basin-hopping algorithm
         if (q < 0) or (q > 1):
@@ -722,7 +729,8 @@ class SourceMorphology(object):
     @lazyproperty
     def multimode(self):
         """
-        Calculate the multimode statistic as described in Peth et al. (2016).
+        Calculate the multimode (M) statistic as described in
+        Peth et al. (2016).
         
         Notes
         -----
@@ -732,9 +740,16 @@ class SourceMorphology(object):
         associated publication (Peth et al. 2016), where it is stated that
         the maximized quantity is A2(l) / A1(l) itself. Here we follow
         Peth et al. (2016) and maximize A2(l) / A1(l).
+
+        In practice, the quantity A2/A1 is tricky to optimize. We do so
+        in two stages: first doing a brute-force search over a
+        relatively coarse array of quantiles, as in the original
+        implementation, followed by a finer search using the
+        basin-hopping method. This should do a better job of finding
+        the global maximum.
+        
         """
         invalid = 99.0  # high "energy" for the basin-hopping algorithm
-        npix = self._cutout_mid.size
 
         # The original IDL implementation only considers quantiles
         # in the range [0.5, 1.0]. While this seems useful in practice,
@@ -744,11 +759,6 @@ class SourceMorphology(object):
         q_min = 0.0
         q_max = 1.0
 
-        # The quantity A2/A1 is tricky to optimize. We do so
-        # in two stages: first using brute-force, as in the original
-        # implementation, followed by a finer search using the
-        # basin-hopping method.
-        
         # STAGE 1: brute-force
 
         # We start with a relatively coarse separation between the
@@ -758,7 +768,7 @@ class SourceMorphology(object):
         mid_stepsize = 0.04
 
         ratio_min = invalid
-        while mid_stepsize > 1.0 / npix:
+        while mid_stepsize > 1.0 / self._cutout_mid.size:
             quantile_array = np.arange(q_min, q_max, mid_stepsize)
             ratio_array = invalid * np.ones_like(quantile_array)
             for k, q in enumerate(quantile_array):
@@ -766,8 +776,7 @@ class SourceMorphology(object):
             k_min = np.argmin(ratio_array)
             q0 = quantile_array[k_min]
             ratio_min = ratio_array[k_min]
-
-            if ratio_min < 0:  # valid ratios should be negative
+            if ratio_min < 0:  # valid "ratios" should be negative
                 break
             else:
                 mid_stepsize = mid_stepsize / 2.0
@@ -789,7 +798,181 @@ class SourceMorphology(object):
         q_final = res.x[0]
         ratio_final = res.fun
 
-        return -1.0 * ratio_final
+        return -1.0 * ratio_final  # return positive value
+
+    #~ @lazyproperty
+    def i_clump(self, image_smooth):
+        img = image_smooth
+        
+        nx = img.shape[0]
+        ny = img.shape[1]
+        clump = -1 + np.zeros_like(np.int32(img))
+        xpeak = -9 + np.zeros_like(np.linspace(0,1,100))
+        ypeak = -9 + np.zeros_like(np.linspace(0,1,100))
+        for jj in np.arange(nx):
+            for kk in np.arange(ny):
+                if img[jj,kk]==0.0:
+                    continue
+                jjcl=jj*1
+                kkcl=kk*1
+                istop=0
+                while (istop==0):
+                    jjmax=jjcl*1
+                    kkmax=kkcl*1
+                    imgmax=img[jjcl,kkcl]
+                    for mm in [-1,0,1]:
+                        if (jjcl+mm >= 0) and (jjcl+mm < nx):
+                            for nn in [-1,0,1]:
+                                if (kkcl+nn >= 0) and (kkcl+nn < ny):
+                                    if (img[jjcl+mm,kkcl+nn] > imgmax):
+                                        imgmax = img[jjcl+mm,kkcl+nn]
+                                        jjmax=jjcl+mm
+                                        kkmax=kkcl+nn
+                    #end of mm, nn loops
+                    if jjmax==jjcl and kkmax==kkcl:
+                        ifound=0
+                        mm=0
+                        while (ifound==0) and (xpeak[mm] != -9) and (mm < 99):
+                            if (xpeak[mm]==jjmax) and (ypeak[mm]==kkmax):
+                                ifound=1
+                            else:
+                                mm = mm+1
+                        #endwhile
+                        if (ifound==0):
+                            xpeak[mm]=jjmax
+                            ypeak[mm]=kkmax
+                        clump[jj,kk]=mm
+                        istop=1
+                    else:
+                        jjcl = jjmax
+                        kkcl = kkmax
+                #endwhile
+            #endfor
+        #endfor
+        clump = clump+1
+
+        return clump, xpeak, ypeak
+
+    #~ @lazyproperty
+    def _watershed_mid(self, image_smooth):
+        """
+        This replaces the "i_clump" routine from the original IDL code.
+        Returns a labeled array indicating regions around local maxima.
+        
+        """
+        local_maxi = skimage.feature.peak_local_max(
+            image_smooth, indices=False, num_peaks=np.inf)
+        markers, num_markers = ndi.label(local_maxi)
+        if num_markers > 10000:
+            print('Warning: Maybe too many peaks (%d).' % (num_markers))
+
+        mask = image_smooth > 0
+        labeled_array = skimage.morphology.watershed(
+            -image_smooth, markers, connectivity=2, mask=mask)
+
+        return labeled_array
+        
+        
+    @lazyproperty
+    def intensity(self):
+        """
+        Calculate the intensity (I) statistic as described in
+        Peth et al. (2016).
+
+        """
+        mid_sigma = 1.0
+        image = self._cutout_mid
+        image_smooth = ndi.gaussian_filter(image, mid_sigma)
+        
+        start = time.time()
+        #~ labeled_array_i_clump = self._watershed_mid(image_smooth)
+        labeled_array_i_clump, xpeak, ypeak = self.i_clump(image_smooth)
+        time_i_clump = time.time() - start
+
+        labels = np.unique(labeled_array_i_clump)
+        num_labels = len(labels)
+        if num_labels <= 1:
+            print('Warning: Not enough intensity regions for I-statistic.')
+            return 0.0
+        flux_sums = np.zeros(num_labels, dtype=np.float64)
+        for k, label in enumerate(labels):
+            locs = labeled_array_i_clump == label
+            flux_sums[k] = np.sum(image_smooth[locs])
+        sorted_flux_sums = np.sort(flux_sums)[::-1]
+        i_prime_i_clump = sorted_flux_sums[1] / sorted_flux_sums[0]
+        print('Intensity (i_clump):', i_prime_i_clump)
+
+        start = time.time()
+        labeled_array_ws = self._watershed_mid(image_smooth)
+        time_watershed = time.time() - start
+
+        labels = np.unique(labeled_array_ws)
+        num_labels = len(labels)
+        if num_labels <= 1:
+            print('Warning: Not enough intensity regions for I-statistic.')
+            return 0.0
+        flux_sums = np.zeros(num_labels, dtype=np.float64)
+        for k, label in enumerate(labels):
+            locs = labeled_array_ws == label
+            flux_sums[k] = np.sum(image_smooth[locs])
+        sorted_flux_sums = np.sort(flux_sums)[::-1]
+        i_prime_ws = sorted_flux_sums[1] / sorted_flux_sums[0]
+        print('Intensity (watershed):', i_prime_ws)
+
+        # Plot (for debugging purposes)
+        make_plot = True
+        if make_plot:
+            import matplotlib.pyplot as plt
+            cmap = plt.get_cmap('Pastel1')
+            import matplotlib.colors
+
+            top_margin = 0.05
+            eps = 0.005
+            fig = plt.figure(figsize=(8.0 / (1.0 - 3.0*eps), 8.0 / (1.0-2.0*top_margin - eps)))
+
+            ax = plt.subplot2grid((2, 2), (0, 0), rowspan=1, colspan=1)
+            ax.imshow(image, cmap='gray', origin='lower')
+            ax.set_title('Original')
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            ax = plt.subplot2grid((2, 2), (0, 1), rowspan=1, colspan=1)
+            ax.imshow(image_smooth, cmap='gray', origin='lower')
+            ax.set_title('Smoothed (sigma = %g)' % (mid_sigma))
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            ax = plt.subplot2grid((2, 2), (1, 0), rowspan=1, colspan=1)
+            ax.imshow(labeled_array_i_clump % cmap.N, cmap=cmap, origin='lower',
+                norm=matplotlib.colors.NoNorm())
+            text = 'I-statistic = %.5f\nTime: %.4f s' % (i_prime_i_clump, time_i_clump)
+            ax.text(0.97, 0.03, text, fontsize=14,
+                horizontalalignment='right', verticalalignment='bottom',
+                bbox=dict(facecolor='white', alpha=1.0),
+                transform=ax.transAxes)
+            ax.set_title('i_clump')
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            ax = plt.subplot2grid((2, 2), (1, 1), rowspan=1, colspan=1)
+            ax.imshow(labeled_array_ws % cmap.N, cmap=cmap, origin='lower',
+                norm=matplotlib.colors.NoNorm())
+            text = 'I-statistic = %.5f\nTime: %.4f s' % (i_prime_ws, time_watershed)
+            ax.text(0.97, 0.03, text, fontsize=14,
+                horizontalalignment='right', verticalalignment='bottom',
+                bbox=dict(facecolor='white', alpha=1.0),
+                transform=ax.transAxes)
+            ax.set_title('peak_local_max + watershed')
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            # defaults: left = 0.125, right = 0.9, bottom = 0.1, top = 0.9, wspace = 0.2, hspace = 0.2
+            fig.subplots_adjust(left=eps, right=1-eps, bottom=eps, top=1.0-top_margin, wspace=eps, hspace=top_margin)
+
+            # Slightly higher dpi (than 100) to minimize artifacts:
+            fig.savefig('i_labels_sigma_%g.png' % (mid_sigma), dpi=150)
+        
+        return i_prime_ws
 
 
 def source_morphology(image, segmap, **kwargs):
