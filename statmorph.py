@@ -87,6 +87,9 @@ class SourceMorphology(object):
     petro_fraction_cas : float, optional
         In the CAS calculations, this is the fraction of the Petrosian
         radius used as a smoothing scale. The default value is 0.25.
+    sigma_mid : float, optional
+        In the MID calculations, this is the smoothing scale used
+        to compute the intensity (I) statistic.
 
     References
     ----------
@@ -96,7 +99,7 @@ class SourceMorphology(object):
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
                  eta=0.2, petro_fraction_gini=0.2, remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5, petro_fraction_cas=0.25):
+                 petro_extent=1.5, petro_fraction_cas=0.25, sigma_mid=1.0):
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
@@ -106,6 +109,7 @@ class SourceMorphology(object):
         self._skybox_size = skybox_size
         self._petro_extent = petro_extent
         self._petro_fraction_cas = petro_fraction_cas
+        self._sigma_mid = sigma_mid
         
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
@@ -806,8 +810,7 @@ class SourceMorphology(object):
         Just a Gaussian-smoothed version of the zero-masked image used
         in the MID calculations.
         """
-        mid_sigma = 1.0
-        image_smooth = ndi.gaussian_filter(self._cutout_mid, mid_sigma)
+        image_smooth = ndi.gaussian_filter(self._cutout_mid, self._sigma_mid)
         return image_smooth
 
     @lazyproperty
