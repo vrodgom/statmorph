@@ -47,6 +47,10 @@ class SourceMorphology(object):
     mask : array-like (bool), optional
         A 2D array with the same size as ``image``, where pixels
         set to ``True`` are ignored from all calculations.
+    variance : array-like, optional
+        A 2D array with the same size as ``image`` with the
+        values of the variance (RMS^2). This is required
+        in order to calculate the signal-to-noise correctly.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the size of the segment containing the source (the original
@@ -100,11 +104,12 @@ class SourceMorphology(object):
     Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163
 
     """
-    def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
-                 eta=0.2, petro_fraction_gini=0.2, remove_outliers=False,
-                 n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5, petro_fraction_cas=0.25,
+    def __init__(self, image, segmap, label, mask=None, variance=None,
+                 cutout_extent=1.5, eta=0.2, petro_fraction_gini=0.2,
+                 remove_outliers=False, n_sigma_outlier=10, border_size=5,
+                 skybox_size=20, petro_extent=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, sigma_mid=1.0):
+        self._variance = variance
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
@@ -287,9 +292,9 @@ class SourceMorphology(object):
 
         return rpetro_circ
 
-    ##################
-    # Gini-M20 stuff #
-    ##################
+    #######################
+    # Gini-M20 statistics #
+    #######################
 
     @lazyproperty
     def _cutout_gini(self):
@@ -409,9 +414,25 @@ class SourceMorphology(object):
 
         return m20
 
-    #############
-    # CAS stuff #
-    #############
+    @lazyproperty
+    def sn_per_pixel(self):
+        """
+        Calculate the signal-to-noise per pixel using the Petrosian segmap.
+        """
+        image = self._cutout_gini
+        locs = (self._segmap_gini > 0) & (image >= 0)
+        pixelvals = image[locs]
+        if self._variance is None:
+            variance = np.zeros_like(pixelvals)
+        else:
+            variance = self._variance[self._slice_stamp][locs]
+
+        return np.mean(image[locs] / np.sqrt(variance + self._sky_sigma**2))
+
+
+    ##################
+    # CAS statistics #
+    ##################
 
     @lazyproperty
     def _slice_skybox(self):
@@ -585,9 +606,9 @@ class SourceMorphology(object):
 
         return S
 
-    #############
-    # MID stuff #
-    #############
+    ##################
+    # MID statistics #
+    ##################
 
     def _segmap_mid_main_clump(self, q):
         """
