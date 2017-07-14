@@ -723,7 +723,6 @@ class SourceMorphology(object):
         For a given quantile ``q``, return the "ratio" (A2/A1)*A2
         multiplied by -1, which is used for minimization.
         """
-        #~ invalid = 99.0  # high "energy" for the basin-hopping algorithm
         invalid = self._cutout_mid.size  # high "energy" for basin-hopping
         if (q < 0) or (q > 1):
             ratio = invalid
@@ -732,25 +731,7 @@ class SourceMorphology(object):
             if len(sorted_counts) == 1:
                 ratio = invalid
             else:
-                #~ ratio = -1.0 * float(sorted_counts[1]) / float(sorted_counts[0])
                 ratio = -1.0 * float(sorted_counts[1])**2 / float(sorted_counts[0])
-
-        return ratio
-
-    def _multimode_ratio2(self, q):
-        """
-        For a given quantile ``q``, return the "ratio" (A2/A1)*A2
-        multiplied by -1, which is used for minimization.
-        """
-        invalid = 99.0  # high "energy" for the basin-hopping algorithm
-        if (q < 0) or (q > 1):
-            ratio = invalid
-        else:
-            sorted_counts = self._multimode_function(q)
-            if len(sorted_counts) == 1:
-                ratio = invalid
-            else:
-                ratio = -1.0 * float(sorted_counts[1]) / float(sorted_counts[0])
 
         return ratio
 
@@ -758,51 +739,50 @@ class SourceMorphology(object):
     def multimode(self):
         """
         Calculate the multimode (M) statistic as described in
-        Peth et al. (2016).
+        Freeman et al. (2013) and Peth et al. (2016).
         
         Notes
         -----
-        The IDL implementation by Mike Peth (based on previous code by
-        Peter Freeman) actually maximizes A2(l) / A1(l) * A2(l), even
-        though the return value is A2(l) / A1(l). This somewhat contradicts the
-        associated publication (Peth et al. 2016), where it is stated that
-        the maximized quantity is A2(l) / A1(l) itself. Here we follow
-        Peth et al. (2016) and maximize A2(l) / A1(l).
-
-        In practice, the quantity A2/A1 is tricky to optimize. We do so
-        in two stages: first doing a brute-force search over a
-        relatively coarse array of quantiles, as in the original
-        implementation, followed by a finer search using the
-        basin-hopping method. This should do a better job of finding
-        the global maximum.
+        In the original publication, Freeman et al. (2013)
+        recommends using the more robust quantity (A2/A1)*A2,
+        while Peth et al. (2016) recommends using the
+        size-independent quantity A2/A1. Here we take a mixed
+        approach (which, incidentally, is also what Mike Peth's
+        IDL implementation actually does): we maximize the
+        quantity (A2/A1)*A2 (as a function of the brightness
+        threshold) but ultimately define the M statistic
+        as the corresponding A2/A1 value.
+        
+        The original IDL implementation only explores quantiles
+        in the range [0.5, 1.0], at least with the default settings.
+        While this might be useful in practice, in theory the
+        maximum (A2/A1)*A2 value could also happen in the quantile
+        range [0.0, 0.5], so here we take a safer, more general
+        approach and search over [0.0, 1.0].
+        
+        In practice, the quantity (A2/A1)*A2 is tricky to optimize.
+        We improve over previous implementations by doing so
+        in two stages: starting with a brute-force search
+        over a relatively coarse array of quantiles, as in the
+        original implementation, followed by a finer search using
+        the basin-hopping method. This should do a better job of
+        finding the global maximum.
         
         """
-        # The original IDL implementation only considers quantiles
-        # in the range [0.5, 1.0]. While this seems useful in practice,
-        # in theory the maximal A2/A1 could also happen in the
-        # percentile range [0.0, 0.5], so we take the safer, more
-        # general approach and search over [0.0, 1.0].
-        #~ q_min = 0.0
-        #~ q_max = 1.0
-
-        q_min = 0.9
+        q_min = 0.0
         q_max = 1.0
 
         # STAGE 1: brute-force
 
-
-
-        import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(8,12))
-
-        ax = fig.add_subplot(2,1,1)
-
-        mid_stepsize = 0.1 / 500.0
+        # We start with a relatively coarse separation between the
+        # quantiles, equal to twice the value used in the original IDL
+        # implementation. If every calculated ratio is invalid, we
+        # try a smaller size.
+        mid_stepsize = 0.04
 
         while True:
             quantile_array = np.arange(q_min, q_max, mid_stepsize)
             ratio_array = np.zeros_like(quantile_array)
-
             for k, q in enumerate(quantile_array):
                 ratio_array[k] = self._multimode_ratio(q)
             k_min = np.argmin(ratio_array)
@@ -816,118 +796,6 @@ class SourceMorphology(object):
             else:
                 mid_stepsize = mid_stepsize / 2.0
                 print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
-
-
-        locs = ratio_array < 0
-        ax.plot(quantile_array[locs], -ratio_array[locs], 'b-')
-
-
-
-
-        # We start with a relatively coarse separation between the
-        # quantiles, twice the value used in the original IDL
-        # implementation. If every calculated ratio is invalid, we
-        # try a smaller size.
-        #~ mid_stepsize = 0.04
-        mid_stepsize = 0.02
-
-        while True:
-            quantile_array = np.arange(q_min, q_max, mid_stepsize)
-            ratio_array = np.zeros_like(quantile_array)
-
-            for k, q in enumerate(quantile_array):
-                ratio_array[k] = self._multimode_ratio(q)
-            k_min = np.argmin(ratio_array)
-            q0 = quantile_array[k_min]
-            ratio_min = ratio_array[k_min]
-            if ratio_min < 0:  # valid "ratios" should be negative
-                break
-            elif mid_stepsize < 1.0 / self._cutout_mid.size:
-                print('Warning: Single clump! (This should be rare.)')
-                return 0.0
-            else:
-                mid_stepsize = mid_stepsize / 2.0
-                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
-
-
-        locs = ratio_array < 0
-        ax.plot(quantile_array[locs], -ratio_array[locs], 'ro')
-
-        ax.set_xlabel('Quantile', fontsize=14)
-        ax.set_ylabel('(A2/A1)*A2', fontsize=14)
-
-
-        ax = fig.add_subplot(2,1,2)
-
-        mid_stepsize = 0.1 / 500.0
-
-        while True:
-            quantile_array = np.arange(q_min, q_max, mid_stepsize)
-            ratio_array = np.zeros_like(quantile_array)
-
-            for k, q in enumerate(quantile_array):
-                ratio_array[k] = self._multimode_ratio2(q)
-            k_min = np.argmin(ratio_array)
-            q0 = quantile_array[k_min]
-            ratio_min = ratio_array[k_min]
-            if ratio_min < 0:  # valid "ratios" should be negative
-                break
-            elif mid_stepsize < 1.0 / self._cutout_mid.size:
-                print('Warning: Single clump! (This should be rare.)')
-                return 0.0
-            else:
-                mid_stepsize = mid_stepsize / 2.0
-                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
-
-
-        locs = ratio_array < 0
-        ax.plot(quantile_array[locs], -ratio_array[locs], 'b-')
-
-
-
-
-        # We start with a relatively coarse separation between the
-        # quantiles, twice the value used in the original IDL
-        # implementation. If every calculated ratio is invalid, we
-        # try a smaller size.
-        #~ mid_stepsize = 0.04
-        mid_stepsize = 0.02
-
-        while True:
-            quantile_array = np.arange(q_min, q_max, mid_stepsize)
-            ratio_array = np.zeros_like(quantile_array)
-
-            for k, q in enumerate(quantile_array):
-                ratio_array[k] = self._multimode_ratio2(q)
-            k_min = np.argmin(ratio_array)
-            q0 = quantile_array[k_min]
-            ratio_min = ratio_array[k_min]
-            if ratio_min < 0:  # valid "ratios" should be negative
-                break
-            elif mid_stepsize < 1.0 / self._cutout_mid.size:
-                print('Warning: Single clump! (This should be rare.)')
-                return 0.0
-            else:
-                mid_stepsize = mid_stepsize / 2.0
-                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
-
-
-        locs = ratio_array < 0
-        ax.plot(quantile_array[locs], -ratio_array[locs], 'ro')
-
-        ax.set_xlabel('Quantile', fontsize=14)
-        ax.set_ylabel('A2/A1', fontsize=14)
-
-
-
-
-
-        # defaults: left = 0.125, right = 0.9, bottom = 0.1, top = 0.9, wspace = 0.2, hspace = 0.2
-        fig.subplots_adjust(left=0.12, right=0.94, bottom=0.06, top=0.97, wspace=0.2, hspace=0.2)
-
-
-        fig.savefig('m_statistic.png')
-
 
         # STAGE 2: basin-hopping method
 
