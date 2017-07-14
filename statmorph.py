@@ -87,9 +87,13 @@ class SourceMorphology(object):
     petro_fraction_cas : float, optional
         In the CAS calculations, this is the fraction of the Petrosian
         radius used as a smoothing scale. The default value is 0.25.
+    boxcar_size_mid : float, optional
+        In the MID calculations, this is the size (in pixels)
+        of the constant kernel used to regularize the MID segmap.
+        The default value is 3.0.
     sigma_mid : float, optional
-        In the MID calculations, this is the smoothing scale used
-        to compute the intensity (I) statistic.
+        In the MID calculations, this is the smoothing scale (in pixels)
+        used to compute the intensity (I) statistic. The default is 1.0.
 
     References
     ----------
@@ -99,7 +103,8 @@ class SourceMorphology(object):
     def __init__(self, image, segmap, label, mask=None, cutout_extent=1.5,
                  eta=0.2, petro_fraction_gini=0.2, remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5, petro_fraction_cas=0.25, sigma_mid=1.0):
+                 petro_extent=1.5, petro_fraction_cas=0.25,
+                 boxcar_size_mid=3.0, sigma_mid=1.0):
         self._cutout_extent = cutout_extent
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
@@ -109,6 +114,7 @@ class SourceMorphology(object):
         self._skybox_size = skybox_size
         self._petro_extent = petro_extent
         self._petro_fraction_cas = petro_fraction_cas
+        self._boxcar_size_mid = boxcar_size_mid
         self._sigma_mid = sigma_mid
         
         # The following object stores some important data:
@@ -667,10 +673,9 @@ class SourceMorphology(object):
         q = opt.brentq(self._segmap_mid_function, q_min, q_max, xtol=xtol)
 
         # Regularize a bit the shape of the segmap:
-        mid_boxcar_size = 3
         locs_main_clump = self._segmap_mid_main_clump(q)
         segmap_float = ndi.uniform_filter(
-            np.float64(locs_main_clump), size=mid_boxcar_size)
+            np.float64(locs_main_clump), size=self._boxcar_size_mid)
         segmap = segmap_float > 0.5
 
         return segmap
@@ -715,7 +720,26 @@ class SourceMorphology(object):
 
     def _multimode_ratio(self, q):
         """
-        For a given quantile ``q``, return the ratio A2/A1
+        For a given quantile ``q``, return the "ratio" (A2/A1)*A2
+        multiplied by -1, which is used for minimization.
+        """
+        #~ invalid = 99.0  # high "energy" for the basin-hopping algorithm
+        invalid = self._cutout_mid.size  # high "energy" for basin-hopping
+        if (q < 0) or (q > 1):
+            ratio = invalid
+        else:
+            sorted_counts = self._multimode_function(q)
+            if len(sorted_counts) == 1:
+                ratio = invalid
+            else:
+                #~ ratio = -1.0 * float(sorted_counts[1]) / float(sorted_counts[0])
+                ratio = -1.0 * float(sorted_counts[1])**2 / float(sorted_counts[0])
+
+        return ratio
+
+    def _multimode_ratio2(self, q):
+        """
+        For a given quantile ``q``, return the "ratio" (A2/A1)*A2
         multiplied by -1, which is used for minimization.
         """
         invalid = 99.0  # high "energy" for the basin-hopping algorithm
@@ -753,28 +777,32 @@ class SourceMorphology(object):
         the global maximum.
         
         """
-        invalid = 99.0  # high "energy" for the basin-hopping algorithm
-
         # The original IDL implementation only considers quantiles
         # in the range [0.5, 1.0]. While this seems useful in practice,
         # in theory the maximal A2/A1 could also happen in the
         # percentile range [0.0, 0.5], so we take the safer, more
         # general approach and search over [0.0, 1.0].
-        q_min = 0.0
+        #~ q_min = 0.0
+        #~ q_max = 1.0
+
+        q_min = 0.9
         q_max = 1.0
 
         # STAGE 1: brute-force
 
-        # We start with a relatively coarse separation between the
-        # quantiles, twice the value used in the original IDL
-        # implementation. If every calculated ratio is invalid, we
-        # try a smaller size.
-        mid_stepsize = 0.04
 
-        ratio_min = invalid
-        while mid_stepsize > 1.0 / self._cutout_mid.size:
+
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(8,12))
+
+        ax = fig.add_subplot(2,1,1)
+
+        mid_stepsize = 0.1 / 500.0
+
+        while True:
             quantile_array = np.arange(q_min, q_max, mid_stepsize)
-            ratio_array = invalid * np.ones_like(quantile_array)
+            ratio_array = np.zeros_like(quantile_array)
+
             for k, q in enumerate(quantile_array):
                 ratio_array[k] = self._multimode_ratio(q)
             k_min = np.argmin(ratio_array)
@@ -782,9 +810,124 @@ class SourceMorphology(object):
             ratio_min = ratio_array[k_min]
             if ratio_min < 0:  # valid "ratios" should be negative
                 break
+            elif mid_stepsize < 1.0 / self._cutout_mid.size:
+                print('Warning: Single clump! (This should be rare.)')
+                return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
                 print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
+
+
+        locs = ratio_array < 0
+        ax.plot(quantile_array[locs], -ratio_array[locs], 'b-')
+
+
+
+
+        # We start with a relatively coarse separation between the
+        # quantiles, twice the value used in the original IDL
+        # implementation. If every calculated ratio is invalid, we
+        # try a smaller size.
+        #~ mid_stepsize = 0.04
+        mid_stepsize = 0.02
+
+        while True:
+            quantile_array = np.arange(q_min, q_max, mid_stepsize)
+            ratio_array = np.zeros_like(quantile_array)
+
+            for k, q in enumerate(quantile_array):
+                ratio_array[k] = self._multimode_ratio(q)
+            k_min = np.argmin(ratio_array)
+            q0 = quantile_array[k_min]
+            ratio_min = ratio_array[k_min]
+            if ratio_min < 0:  # valid "ratios" should be negative
+                break
+            elif mid_stepsize < 1.0 / self._cutout_mid.size:
+                print('Warning: Single clump! (This should be rare.)')
+                return 0.0
+            else:
+                mid_stepsize = mid_stepsize / 2.0
+                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
+
+
+        locs = ratio_array < 0
+        ax.plot(quantile_array[locs], -ratio_array[locs], 'ro')
+
+        ax.set_xlabel('Quantile', fontsize=14)
+        ax.set_ylabel('(A2/A1)*A2', fontsize=14)
+
+
+        ax = fig.add_subplot(2,1,2)
+
+        mid_stepsize = 0.1 / 500.0
+
+        while True:
+            quantile_array = np.arange(q_min, q_max, mid_stepsize)
+            ratio_array = np.zeros_like(quantile_array)
+
+            for k, q in enumerate(quantile_array):
+                ratio_array[k] = self._multimode_ratio2(q)
+            k_min = np.argmin(ratio_array)
+            q0 = quantile_array[k_min]
+            ratio_min = ratio_array[k_min]
+            if ratio_min < 0:  # valid "ratios" should be negative
+                break
+            elif mid_stepsize < 1.0 / self._cutout_mid.size:
+                print('Warning: Single clump! (This should be rare.)')
+                return 0.0
+            else:
+                mid_stepsize = mid_stepsize / 2.0
+                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
+
+
+        locs = ratio_array < 0
+        ax.plot(quantile_array[locs], -ratio_array[locs], 'b-')
+
+
+
+
+        # We start with a relatively coarse separation between the
+        # quantiles, twice the value used in the original IDL
+        # implementation. If every calculated ratio is invalid, we
+        # try a smaller size.
+        #~ mid_stepsize = 0.04
+        mid_stepsize = 0.02
+
+        while True:
+            quantile_array = np.arange(q_min, q_max, mid_stepsize)
+            ratio_array = np.zeros_like(quantile_array)
+
+            for k, q in enumerate(quantile_array):
+                ratio_array[k] = self._multimode_ratio2(q)
+            k_min = np.argmin(ratio_array)
+            q0 = quantile_array[k_min]
+            ratio_min = ratio_array[k_min]
+            if ratio_min < 0:  # valid "ratios" should be negative
+                break
+            elif mid_stepsize < 1.0 / self._cutout_mid.size:
+                print('Warning: Single clump! (This should be rare.)')
+                return 0.0
+            else:
+                mid_stepsize = mid_stepsize / 2.0
+                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
+
+
+        locs = ratio_array < 0
+        ax.plot(quantile_array[locs], -ratio_array[locs], 'ro')
+
+        ax.set_xlabel('Quantile', fontsize=14)
+        ax.set_ylabel('A2/A1', fontsize=14)
+
+
+
+
+
+        # defaults: left = 0.125, right = 0.9, bottom = 0.1, top = 0.9, wspace = 0.2, hspace = 0.2
+        fig.subplots_adjust(left=0.12, right=0.94, bottom=0.06, top=0.97, wspace=0.2, hspace=0.2)
+
+
+        fig.savefig('m_statistic.png')
+
 
         # STAGE 2: basin-hopping method
 
@@ -794,15 +937,17 @@ class SourceMorphology(object):
         mid_bh_niter = 5
         mid_bh_rel_temp = 0.2
 
-        temp = -1.0 * ratio_min * mid_bh_rel_temp
+        temperature = -1.0 * ratio_min * mid_bh_rel_temp
         res = opt.basinhopping(self._multimode_ratio, q0,
             minimizer_kwargs={"method": "Nelder-Mead"},
-            niter=mid_bh_niter, T=temp, stepsize=mid_stepsize,
+            niter=mid_bh_niter, T=temperature, stepsize=mid_stepsize,
             interval=mid_bh_niter, disp=False)
         q_final = res.x[0]
-        ratio_final = res.fun
 
-        return -1.0 * ratio_final  # return positive value
+        # Finally, return A2/A1 instead of (A2/A1)*A2
+        sorted_counts = self._multimode_function(q_final)
+
+        return float(sorted_counts[1]) / float(sorted_counts[0])
 
     @lazyproperty
     def _cutout_mid_smooth(self):
