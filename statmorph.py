@@ -101,7 +101,7 @@ class SourceMorphology(object):
 
     References
     ----------
-    Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163
+    See `README.md` for a list of references.
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
@@ -121,13 +121,17 @@ class SourceMorphology(object):
         self._petro_fraction_cas = petro_fraction_cas
         self._boxcar_size_mid = boxcar_size_mid
         self._sigma_mid = sigma_mid
-        
+
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
         # Centroid of the source relative to the "postage stamp" cutout:
         self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
         self._yc_stamp = self._props.ycentroid.value - self._slice_stamp[0].start
+
+        # Position of the brightest pixel relative to the "stamp" cutout:
+        self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
+        self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -136,11 +140,9 @@ class SourceMorphology(object):
     def _slice_stamp(self):
         """
         Attempt to create a square slice (centered at the centroid)
-        that is slightly larger than the minimum bounding box used by
-        photutils. This is important for some morphological
-        calculations. Note that the cutout may not be square when the
-        source is close to a border of the original image.
-
+        that is a bit larger than the minimal bounding box containing
+        the main labeled segment. Note that the cutout may not be
+        square when the source is close to a border of the original image.
         """
         # Maximum distance to any side of the bounding box
         yc, xc = np.int64(self._props.centroid.value)
@@ -159,21 +161,29 @@ class SourceMorphology(object):
         return slice_stamp
 
     @lazyproperty
-    def _cutout_stamp_maskzeroed_double(self):
+    def _mask_stamp(self):
         """
-        Return a data cutout centered on the source of interest,
-        but which is slightly larger than the minimal bounding box.
-        Pixels belonging to other sources (as well as masked pixels)
-        are set to zero, but the background is left alone.
-
+        Create a total binary mask for the "postage stamp".
+        Pixels belonging to other sources (as well as pixels masked
+        using the ``mask`` keyword argument) are set to ``True``,
+        but the background (segmap == 0) is left alone.
         """
-        cutout_stamp = self._props._data[self._slice_stamp]
         segmap_stamp = self._props._segment_img.data[self._slice_stamp]
-        mask_stamp = (segmap_stamp > 0) & (segmap_stamp != self._props.label)
+        mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self._props.label)
         if self._props._mask is not None:
             mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
-        cutout_stamp[mask_stamp] = 0
-        
+        return mask_stamp
+
+    @lazyproperty
+    def _cutout_stamp_maskzeroed_double(self):
+        """
+        Return a data cutout with its shape and position determined
+        by ``_slice_stamp``. Pixels belonging to other sources
+        (as well as pixels where ``mask`` == 1) are set to zero,
+        but the background is left alone.
+        """
+        cutout_stamp = self._props._data[self._slice_stamp]
+        cutout_stamp[self._mask_stamp] = 0
         # Some skimage functions require double precision:
         return np.float64(cutout_stamp)
 
@@ -925,6 +935,114 @@ class SourceMorphology(object):
 
         return np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
 
+    ###################
+    # SHAPE ASYMMETRY #
+    ###################
+
+    def _norm_flux_function_circ(self, r, ratio):
+        """
+        Helper function to calculate the FWHM of a galaxy profile,
+        assuming circular symmetry.
+        
+        For a pixel-wide circular annulus around the brightest pixel
+        with radius ``r``, return the mean flux over the annulus
+        divided by the flux of the brightest pixel, minus the "target"
+        ratio (0.5 for half the FWHM).
+
+        """
+        #~ r_in = r - 1.0
+        #~ r_out = r + 1.0
+        r_in = r - 0.5
+        r_out = r + 0.5
+        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
+        ic, jc = int(yc), int(xc)
+
+        max_flux = self._cutout_stamp_maskzeroed_double[ic, jc]
+        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
+        circ_annulus_mean_flux = circ_annulus.do_photometry(
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_annulus.area()
+
+        return circ_annulus_mean_flux / max_flux - ratio
+
+    @lazyproperty
+    def _radius_at_half_maximum(self):
+        """
+        Compute the radius at half-maximum (half of the FWHM)
+        assuming circular symmetry.
+        """
+        r_min = 2.0
+        r_max = self._dist_to_closest_corner
+        ratio = 0.5
+        r_hm = opt.brentq(self._norm_flux_function_circ, r_min, r_max,
+                          args=(ratio,), xtol=1e-6)
+        return r_hm
+
+    @lazyproperty
+    def _segmap_pawlik(self):
+        """
+        Construct a binary detection mask as described in Section 3.1
+        from Pawlik et al. (2016).
+        
+        Notes
+        -----
+        The algorithm seems to require a lot of sky area around the
+        source of interest. In some cases we fall back to boundaries
+        based on the Petrosian radius.
+        
+        """
+        
+        # Create a circular annulus around the brightest pixel
+        # with inner and outer radii equal to
+        # 20 and 40 times the radius at half-maximum (20 and 40 times
+        # the FWHM seems like too much!)
+        #
+        # In fact, I might replace this step with the sky box from
+        # the other asymmetry calculation.
+
+        r_in = 20.0 * self._radius_at_half_maximum
+        r_out = 40.0 * self._radius_at_half_maximum
+        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
+
+        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
+
+        # Only consider area within the cutout
+        circ_annulus_area = circ_annulus.do_photometry(
+            np.float64(~self._mask_stamp), method='exact')[0][0]
+        if circ_annulus_area == 0:
+            raise Exception('Annulus completely outside postage stamp!')
+
+        circ_annulus_flux_sum = circ_annulus.do_photometry(
+            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
+        circ_annulus_flux_mean = circ_annulus_flux_sum / circ_annulus_area
+        sqr_diff = (self._cutout_stamp_maskzeroed_double - circ_annulus_flux_mean)**2
+        circ_annulus_flux_sum2 = circ_annulus.do_photometry(
+            sqr_diff, method='exact')[0][0]
+        circ_annulus_flux_std = np.sqrt(circ_annulus_flux_sum2 / circ_annulus_area)
+        print('Mean:', circ_annulus_flux_mean)
+        print('Std:', circ_annulus_flux_std)
+
+        # For comparison
+        print('Sky Mean:', self._sky_mean)
+        print('Sky Std:', self._sky_sigma)
+
+        image = ndi.uniform_filter(
+            self._cutout_stamp_maskzeroed_double, size=3.0)
+        #~ threshold = self._sky_mean + self._sky_sigma
+        threshold = circ_annulus_flux_mean + circ_annulus_flux_std
+        above_threshold = image >= threshold
+
+        # Center at brightest pixel
+        ic, jc = int(yc), int(xc)
+
+        # Neighbor "footprint" for growing regions, including corners:
+        s = ndi.generate_binary_structure(2, 2)
+
+        labeled_array, num_features = ndi.label(above_threshold, structure=s)
+        if labeled_array[ic, jc] == 0:
+            # Centroid is not part of the main clump.
+            return None
+
+        return labeled_array == labeled_array[ic, jc]
 
 def source_morphology(image, segmap, **kwargs):
     """

@@ -72,7 +72,7 @@ for quantity in quantities:
     value = morph[quantity]
     print('%25s: %10.6f   (Time: %.6f s)' % (
           quantity, value, time.time() - start))
-print('\nTotal time: %.6f' % (time.time() - start_all))
+print('\nTotal time: %.6f s.' % (time.time() - start_all))
 
 ```
 
@@ -91,7 +91,7 @@ For Pan-STARRS galaxy **J235958.6+281704** in the g-band, this returns:
                 intensity:   0.018720   (Time: 0.089640 s)
                 deviation:   0.018686   (Time: 0.002412 s)
 
-Total time: 1.082431
+Total time: 1.082431 s.
 ```
 
 ### Authors ###
@@ -114,7 +114,7 @@ the package using its Zenodo record:
 
 In addition, below we provide some of the main references that should
 be cited when using each of the morphological parameters. This list is
-provided as a starting point. It is not meant to be exhaustive. Please
+provided as a starting point and is not meant to be exhaustive. Please
 see the references within each publication for a more complete list.
 
 * Gini--M20 statistics:
