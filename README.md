@@ -14,10 +14,10 @@ T.B.D.
 All of the following dependencies are included in the
 [astroconda](https://astroconda.readthedocs.io) environment:
 
-* Numpy
-* Scipy
-* Sklearn
-* Astropy
+* numpy
+* scipy
+* scikit-image
+* astropy
 * photutils
 
 ### Usage example ###
@@ -34,34 +34,64 @@ import statmorph
 
 hdulist_image = fits.open('image.fits.gz')
 hdulist_segmap = fits.open('segmap.fits.gz')
+hdulist_stmask = fits.open('stmask.fits.gz')
+hdulist_weights = fits.open('weights.fits.gz')
 
 image = hdulist_image['PRIMARY'].data
 segmap = hdulist_segmap['PRIMARY'].data
+mask = np.asarray(hdulist_stmask['PRIMARY'].data, dtype=np.bool8)
+variance = hdulist_weights['PRIMARY'].data
 
-source_morphology = statmorph.source_morphology(image, segmap)
-
-# Print properties of first source in the segmentation map
-morph = source_morphology[0]
-print('Gini:', morph.gini)
-print('M20:', morph.m20)
-print('Asymmetry:', morph.asymmetry)
-print('Concentration:', morph.concentration)
-print('Smoothness:', morph.smoothness)
+source_morphology = statmorph.source_morphology(
+    image, segmap, mask=mask, variance=variance)
 
 hdulist_image.close()
 hdulist_segmap.close()
+hdulist_stmask.close()
+hdulist_weights.close()
+
+# Print some properties of the first source in the segmentation map
+morph = source_morphology[0]
+quantities = [
+    'petrosian_radius_circ',
+    'petrosian_radius_ellip',
+    'gini',
+    'm20',
+    'sn_per_pixel',
+    'asymmetry',
+    'concentration',
+    'smoothness',
+    'multimode',
+    'intensity',
+    'deviation',
+]
+
+start_all = time.time()
+for quantity in quantities:
+    start = time.time()
+    value = morph[quantity]
+    print('%25s: %10.6f   (Time: %.6f s)' % (
+          quantity, value, time.time() - start))
+print('\nTotal time: %.6f' % (time.time() - start_all))
 
 ```
 
 For Pan-STARRS galaxy **J235958.6+281704** in the g-band, this returns:
 
 ```
-Gini: 0.582655879166
-M20: -1.94720368966
-Asymmetry: 0.17009201935
-Concentration: 3.20757730314
-Smoothness: 0.0979850445916
+    petrosian_radius_circ:  55.760521   (Time: 0.013806 s)
+   petrosian_radius_ellip:  97.554697   (Time: 0.055830 s)
+                     gini:   0.582624   (Time: 0.107787 s)
+                      m20:  -1.947202   (Time: 0.022409 s)
+             sn_per_pixel:   4.073095   (Time: 0.001191 s)
+                asymmetry:   0.170386   (Time: 0.066237 s)
+            concentration:   3.210266   (Time: 0.007270 s)
+               smoothness:   0.098102   (Time: 0.006094 s)
+                multimode:   0.027788   (Time: 0.709327 s)
+                intensity:   0.018720   (Time: 0.089640 s)
+                deviation:   0.018686   (Time: 0.002412 s)
 
+Total time: 1.082431
 ```
 
 ### Authors ###
@@ -72,42 +102,48 @@ Smoothness: 0.0979850445916
 
 ### Acknowledgments ###
 
-* Based on IDL and Python code by Jennifer Lotz and Greg Snyder.
+* Based on IDL and Python code by Jennifer Lotz, Greg Snyder, Peter
+  Freeman and Mike Peth.
 
 ### Citing ###
 
-* If you use this code for scientific publication, please cite
+If you use this code for scientific publication, please cite
 the package using its Zenodo record:
 
-T.B.D.
+* T.B.D.
 
-* Additionally, if you use the Gini and M20 statistics, you should cite:
+In addition, below we provide some of the main references that should
+be cited when using each of the morphological parameters. This list is
+provided as a starting point. It is not meant to be exhaustive. Please
+see the references within each publication for a more complete list.
+
+* Gini--M20 statistics:
   * Abraham R. G., van den Bergh S., Nair P., 2003, ApJ, 588, 218
   * Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163.
 
-* If you use the concentration, asymmetry and clumpiness (CAS) statistics,
-you should cite:
+* Concentration, asymmetry and clumpiness (CAS) statistics:
   * Bershady M. A., Jangren A., Conselice C. J., 2000, AJ, 119, 2645
   * Conselice C. J., 2003, ApJS, 147, 1
 
-* If you use the multimode, intensity and deviation (MID) statistics,
-you should cite:
+* Multimode, intensity and deviation (MID) statistics:
   * Freeman P. E., Izbicki R., Lee A. B., Newman J. A., Conselice C. J.,
     Koekemoer A. M., Lotz J. M., Mozena M., 2013, MNRAS, 434, 282
   * Peth M. A. et al., 2016, MNRAS, 458, 963
 
-* If you use the shape asymmetry statistic, you should cite:
+* Outer asymmetry:
+  * Wen Z. Z., Zheng X. Z., Xia An F., 2014, ApJ, 787, 130
   * Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
     Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
 
-The list of references above is provided as a starting point. Please see
-the references for further information.
+* Shape asymmetry:
+  * Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
+    Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
 
 ### Disclaimer ###
 
 This package is not meant to be the "official" implementation of any
 of the morphological statistics described above. Please contact the
-authors of the original papers for a reference implementation.
+authors of the original publications for a "reference" implementation.
 Also see the LICENSE.
 
 ### Licensing ###
