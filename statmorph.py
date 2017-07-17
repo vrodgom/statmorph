@@ -221,9 +221,9 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), a, b, theta)
 
         ellip_annulus_mean_flux = ellip_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / ellip_annulus.area()
+            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / ellip_annulus.area()
         ellip_aperture_mean_flux = ellip_aperture.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / ellip_aperture.area()
+            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / ellip_aperture.area()
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -247,9 +247,10 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), r)
 
         circ_annulus_mean_flux = circ_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_annulus.area()
+            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / circ_annulus.area()
         circ_aperture_mean_flux = circ_aperture.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_aperture.area()
+            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / circ_aperture.area()
+
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -269,7 +270,7 @@ class SourceMorphology(object):
         a_min = 2.0
         a_max = self._dist_to_closest_corner
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
-                                  a_min, a_max, xtol=1e-6)
+                                  a_min, a_max, xtol=1.0)
         
         return rpetro_ellip
 
@@ -288,7 +289,7 @@ class SourceMorphology(object):
         r_min = 2.0
         r_max = self._dist_to_closest_corner
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
-                                 r_min, r_max, xtol=1e-6)
+                                 r_min, r_max, xtol=1.0)
 
         return rpetro_circ
 
