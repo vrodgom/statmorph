@@ -13,7 +13,6 @@ import skimage.measure
 import skimage.feature
 import skimage.morphology
 from astropy.utils import lazyproperty
-from astropy.stats import gaussian_sigma_to_fwhm
 from astropy.stats import sigma_clipped_stats
 import photutils
 
@@ -43,49 +42,15 @@ def _mode(a):
 
 def _aperture_area(ap, mask, **kwargs):
     """
-    Calculate the area of a photutils aperture for a given mask.
-    
-    Parameters
-    ----------
-    ap : ``photutils.PixelAperture``
-        The aperture object.
-    mask : array-like (bool)
-        The mask.
-
-    Other parameters
-    ----------------
-    kwargs : `~photutils.PixelAperture` properties.
-
-    Returns
-    -------
-    area : float
-        The area of the aperture.
-
+    Calculate the area of a photutils aperture object,
+    excluding masked pixels.
     """
     return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
 
 def _aperture_mean(ap, image, mask, **kwargs):
     """
-    Calculate the mean flux of an image, given an aperture and a mask.
-    
-    Parameters
-    ----------
-    ap : ``photutils.PixelAperture``
-        The aperture object.
-    image : array-like
-        The image.
-    mask : array-like (bool)
-        The mask.
-
-    Other parameters
-    ----------------
-    kwargs : `~photutils.PixelAperture` properties.
-
-    Returns
-    -------
-    mean : float
-        The mean value.
-
+    Calculate the mean flux of an image for a given photutils
+    aperture object and a mask.
     """
     image2 = image.copy()  # because I don't trust Python sometimes
     image2[mask] = 0.0
@@ -95,27 +60,8 @@ def _aperture_mean(ap, image, mask, **kwargs):
 
 def _aperture_std(ap, image, mask, **kwargs):
     """
-    Calculate the standard deviation of the flux, given an aperture
-    and a mask.
-    
-    Parameters
-    ----------
-    ap : ``photutils.PixelAperture``
-        The aperture object.
-    image : array-like
-        The image.
-    mask : array-like (bool)
-        The mask.
-
-    Other parameters
-    ----------------
-    kwargs : `~photutils.PixelAperture` properties.
-
-    Returns
-    -------
-    std : float
-        The standard deviation.
-
+    Calculate the standard deviation of an image for a given
+    photutils aperture object and a mask.
     """
     sqr_diff = (image - _aperture_mean(ap, image, mask, **kwargs))**2
     sqr_diff[mask] = 0.0
@@ -153,6 +99,9 @@ class SourceMorphology(object):
         the size of the segment containing the source (the original
         implementation adds 100 pixels in each dimension). The value
         must be >= 1. The default value is 1.5 (i.e., 50% larger).
+    annulus_width : float, optional
+        The width (in pixels) of the annuli used to calculate the
+        Petrosian radius and other quantities. The default value is 1.0.
     eta : float, optional
         The Petrosian ``eta`` parameter used to define the Petrosian
         radius. For a circular or elliptical aperture at the Petrosian
@@ -202,12 +151,13 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=1.5, eta=0.2, petro_fraction_gini=0.2,
+                 cutout_extent=1.5, annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
                  remove_outliers=False, n_sigma_outlier=10, border_size=5,
                  skybox_size=20, petro_extent=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, sigma_mid=1.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
+        self._annulus_width = annulus_width
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
         self._remove_outliers = remove_outliers
@@ -226,7 +176,7 @@ class SourceMorphology(object):
         self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
         self._yc_stamp = self._props.ycentroid.value - self._slice_stamp[0].start
 
-        # Position of the brightest pixel relative to the "stamp" cutout:
+        # Position of the brightest pixel relative to the cutout:
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
         self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
 
@@ -297,7 +247,6 @@ class SourceMorphology(object):
         The distance from the centroid to the closest corner of the
         minimal bounding box containing the source. This is used as an
         upper limit when computing the Petrosian radius.
-
         """
         x_dist = min(self._props.xmax.value - self._props.xcentroid.value,
                      self._props.xcentroid.value - self._props.xmin.value)
@@ -309,16 +258,16 @@ class SourceMorphology(object):
         """
         Helper function to calculate the Petrosian "radius".
         
-        For the ellipse with semi-major axis `a`, return the
-        ratio of the mean flux around the ellipse divided by
-        the mean flux within the ellipse, minus "eta" (eq. 4
-        from Lotz et al. 2004). The root of this function is
-        the Petrosian "radius".
-
+        For the ellipse with semi-major axis ``a``, return the
+        ratio of the mean flux over an elliptical annulus
+        divided by the mean flux within the ellipse,
+        minus "eta" (eq. 4 from Lotz et al. 2004). The root of
+        this function is the Petrosian "radius".
         """
         b = a / self._props.elongation.value
-        a_in = a - 1.0
-        a_out = a + 1.0
+        a_in = a - 0.5 * self._annulus_width
+        a_out = a + 0.5 * self._annulus_width
+
         b_out = a_out / self._props.elongation.value
         theta = self._props.orientation.value
 
@@ -341,14 +290,13 @@ class SourceMorphology(object):
         Helper function to calculate ``petrosian_radius_circ``.
         
         For the circle with radius `r`, return the
-        ratio of the mean flux around the circle divided by
-        the mean flux within the circle, minus "eta" (eq. 4
-        from Lotz et al. 2004). The root of this function is
-        the Petrosian radius.
-
+        ratio of the mean flux over a pixel-wide circular
+        annulus divided by the mean flux within the circle,
+        minus "eta" (eq. 4 from Lotz et al. 2004). The root of
+        this function is the Petrosian radius.
         """
-        r_in = r - 1.0
-        r_out = r + 1.0
+        r_in = r - 0.5 * self._annulus_width
+        r_out = r + 0.5 * self._annulus_width
 
         circ_annulus = photutils.CircularAnnulus(
             (self._xc_stamp, self._yc_stamp), r_in, r_out)
@@ -369,15 +317,8 @@ class SourceMorphology(object):
         """
         Compute the Petrosian "radius" (actually the semi-major axis)
         for concentric elliptical apertures.
-        
-        Notes
-        -----
-        Instead of using a "curve of growth," we determine the Petrosian
-        radius using a numerical solver. This should require less
-        iterations, especially for large images.
-        
         """
-        a_min = 2.0
+        a_min = self._annulus_width
         a_max = self._dist_to_closest_corner
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
                                   a_min, a_max, xtol=1.0)
@@ -388,15 +329,8 @@ class SourceMorphology(object):
     def petrosian_radius_circ(self):
         """
         Compute the Petrosian radius for concentric circular apertures.
-        
-        Notes
-        -----
-        Instead of using a "curve of growth," we determine the Petrosian
-        radius using a numerical solver. This should require less
-        iterations, especially for large images.
-        
         """
-        r_min = 2.0
+        r_min = self._annulus_width
         r_max = self._dist_to_closest_corner
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, xtol=1.0)
@@ -443,51 +377,37 @@ class SourceMorphology(object):
         """
         Create a new segmentation map (relative to the "Gini" cutout)
         based on the Petrosian "radius".
-        
-        Notes
-        -----
-        For simplicity, we tentatively remove the condition that the
-        smoothing scale be at least 3 times the PSF scale, which is not
-        mentioned in the original paper. Note that outliers have been
-        removed before smoothing the image.
-        
         """
         # Smooth image
         petro_sigma = self._petro_fraction_gini * self.petrosian_radius_ellip
-        
-        # TMP: Match IDL implementation (1/10 of fwhm)
-        petro_sigma = petro_sigma * gaussian_sigma_to_fwhm / 2.0
-        
         cutout_smooth = ndi.gaussian_filter(self._cutout_gini, petro_sigma)
 
         # Use mean flux at the Petrosian "radius" as threshold
-        a_in = self.petrosian_radius_ellip - 1.0
-        a_out = self.petrosian_radius_ellip + 1.0
+        a_in = self.petrosian_radius_ellip - 0.5 * self._annulus_width
+        a_out = self.petrosian_radius_ellip + 0.5 * self._annulus_width
         b_out = a_out / self._props.elongation.value
         theta = self._props.orientation.value
         ellip_annulus = photutils.EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean(
             ellip_annulus, cutout_smooth, self._mask_stamp, method='exact')
-        segmap_gini = np.where(cutout_smooth >= ellip_annulus_mean_flux, 1, 0)
         
-        return segmap_gini
+        return cutout_smooth >= ellip_annulus_mean_flux
 
     @lazyproperty
     def gini(self):
         """
         Calculate the Gini coefficient as described in Lotz et al. (2004).
-        
         """
         image = self._cutout_gini.flatten()
         segmap = self._segmap_gini.flatten()
 
-        sorted_pixelvals = np.sort(np.abs(image[segmap == 1]))
-        total_absflux = np.sum(sorted_pixelvals)
+        sorted_pixelvals = np.sort(np.abs(image[segmap]))
 
         n = len(sorted_pixelvals)
         indices = np.arange(1, n+1)  # start at i=1
-        gini = np.sum((2*indices-n-1)*sorted_pixelvals) / (total_absflux*float(n-1))
+        gini = (np.sum((2*indices-n-1) * sorted_pixelvals) /
+                (float(n-1) * np.sum(sorted_pixelvals)))
 
         return gini
 
@@ -495,10 +415,9 @@ class SourceMorphology(object):
     def m20(self):
         """
         Calculate the M_20 coefficient as described in Lotz et al. (2004).
-        
         """
         # Use the same region as in the Gini calculation
-        image = np.where(self._segmap_gini == 1, self._cutout_gini, 0.0)
+        image = np.where(self._segmap_gini, self._cutout_gini, 0.0)
         image = np.float64(image)  # skimage wants this
 
         # Calculate centroid
@@ -531,15 +450,15 @@ class SourceMorphology(object):
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
         image = self._cutout_gini
-        locs = (self._segmap_gini > 0) & (image >= 0)
+        locs = self._segmap_gini & (image >= 0)
         pixelvals = image[locs]
         if self._variance is None:
             variance = np.zeros_like(pixelvals)
         else:
-            variance = self._variance[self._slice_stamp][locs]
+            variance = self._variance[self._slice_stamp]
 
-        return np.mean(image[locs] / np.sqrt(variance + self._sky_sigma**2))
-
+        return np.mean(image[locs] / np.sqrt(variance[locs] +
+                                             self._sky_sigma**2))
 
     ##################
     # CAS statistics #
@@ -587,7 +506,7 @@ class SourceMorphology(object):
     @lazyproperty
     def _sky_asymmetry(self):
         """
-        Asymmetry of the background.
+        Asymmetry of the background. Note the peculiar normalization.
         """
         bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
         bkg_180 = bkg[::-1, ::-1]
@@ -596,7 +515,7 @@ class SourceMorphology(object):
     @lazyproperty
     def _sky_smoothness(self):
         """
-        Smoothness of the background.
+        Smoothness of the background. Note the peculiar normalization.
         """
         bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
 
@@ -614,7 +533,7 @@ class SourceMorphology(object):
         r = self._petro_extent * self.petrosian_radius_circ
         ap = photutils.CircularAperture(center, r)
 
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed_double.copy()  # just in case
 
         # Here are some notes about why I'm *not* using
         # skimage.transform.rotate. The following line would
@@ -625,11 +544,10 @@ class SourceMorphology(object):
         # (https://github.com/scikit-image/scikit-image/issues/1732).
         # Also, the center must be given as (x,y), not (y,x), which is
         # the opposite (!) of what the skimage documentation says...
-
         # Such incomplete and contradictory documentation in skimage
         # does not inspire much confidence (probably something will
         # change in future versions), so instead we do the 180 deg
-        # rotation by hand. Also, this is probably faster:
+        # rotation by hand. Also, this approach is probably faster:
         ny, nx = image.shape
         xc, yc = np.floor(center) + 0.5  # center of pixel
         dx = min(nx-xc, xc)
@@ -640,9 +558,10 @@ class SourceMorphology(object):
         image = image[yslice, xslice]
         image_180 = image[::-1, ::-1]
 
+        ap_area = _aperture_area(ap, self._mask_stamp)
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
-        asym = (ap_abs_diff - ap.area()*self._sky_asymmetry) / ap_abs_flux
+        asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_flux
 
         return asym
 
@@ -1050,8 +969,8 @@ class SourceMorphology(object):
         ratio (0.5 for half the FWHM).
 
         """
-        r_in = r - 0.5
-        r_out = r + 0.5
+        r_in = r - 0.5 * self._annulus_width
+        r_out = r + 0.5 * self._annulus_width
         xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
         ic, jc = int(yc), int(xc)
 
@@ -1129,6 +1048,15 @@ class SourceMorphology(object):
             raise Exception('Brightest pixel is outside the main segment?')
 
         return labeled_array == labeled_array[ic, jc]
+
+    @lazyproperty
+    def rmax(self):
+        """
+        Return the distance (in pixels) from the brightest pixel
+        to the edge of the main source segment, as defined in
+        Pawlik et al. (2016).
+        """
+        return None
 
 
 def source_morphology(image, segmap, **kwargs):
