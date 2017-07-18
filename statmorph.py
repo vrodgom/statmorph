@@ -37,6 +37,58 @@ def _mode(a):
     """
     return 2.5 * np.ma.median(a) - 1.5 * np.ma.mean(a)
 
+def _fraction_of_total_function(r, image, center, fraction, total_sum):
+    """
+    Helper function to calculate ``_radius_at_fraction_of_total``.
+    The ``center`` is given as (x,y)
+    """
+    ap = photutils.CircularAperture(center, r)
+    ap_sum = ap.do_photometry(image, method='exact')[0][0]
+
+    return ap_sum / total_sum - fraction
+
+def _radius_at_fraction_of_total(image, center, r_max, fraction):
+    """
+    Return the radius (in pixels) of a concentric circle
+    that contains a given fraction of the total light.
+    The ``center`` is given as (x,y)
+    """
+    r_min = 1.0
+    ap_total = photutils.CircularAperture(center, r_max)
+    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    r = opt.brentq(_fraction_of_total_function, r_min, r_max,
+                   args=(image, center, fraction, total_sum), xtol=1e-6)
+
+    return r
+
+def _fraction_of_maximum_function(r, image, mask, center, annulus_width, fraction, max_flux):
+    """
+    Helper function to calculate ``_radius_at_fraction_of_maximum``.
+    """
+    r_in = r - 0.5 * annulus_width
+    r_out = r + 0.5 * annulus_width
+
+    circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
+    circ_annulus_mean_flux = _aperture_mean(
+        circ_annulus, image, mask, method='exact')
+
+    return circ_annulus_mean_flux / max_flux - fraction
+
+def _radius_at_fraction_of_maximum(image, mask, r_max, annulus_width, fraction):
+    """
+    Return the radius at which the mean flux is a given
+    fraction of the maximum.
+    """
+    r_min = 1.0
+    max_flux = np.max(image)
+    yc, xc = np.argwhere(image == max_flux)[0]
+    center = np.array([xc, yc]) + 0.5
+    r = opt.brentq(_fraction_of_maximum_function, r_min, r_max,
+                   args=(image, mask, center, annulus_width, fraction, max_flux),
+                   xtol=1e-6)
+
+    return r
+
 # The photutils aperture photometry functions *almost* do what I want,
 # but not quite, so unfortunately we need the following:
 
@@ -68,7 +120,6 @@ def _aperture_std(ap, image, mask, **kwargs):
     sqr_diff_sum = ap.do_photometry(sqr_diff, **kwargs)[0][0]
 
     return np.sqrt(sqr_diff_sum / _aperture_area(ap, mask, **kwargs))
-
 
 # This is the main morphology class:
 
@@ -587,31 +638,28 @@ class SourceMorphology(object):
         """
         return self._asymmetry_function(self._asymmetry_center)
 
-    def _concentration_function(self, r, flux_fraction, flux_total):
-        """
-        Helper function to calculate the concentration.
-        """
-        ap = photutils.CircularAperture(self._asymmetry_center, r)
-        ap_flux = ap.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
 
-        return ap_flux / flux_total - flux_fraction
+    #~ def _concentration_function(self, r, flux_fraction, flux_total):
+        #~ """
+        #~ Helper function to calculate the concentration.
+        #~ """
+        #~ ap = photutils.CircularAperture(self._asymmetry_center, r)
+        #~ ap_flux = ap.do_photometry(
+            #~ self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
+
+        #~ return ap_flux / flux_total - flux_fraction
 
     @lazyproperty
     def concentration(self):
         """
         Calculate concentration as described in Lotz et al. (2004).
         """
-        r_min = 2.0
+        image = self._cutout_stamp_maskzeroed_double
+        center = self._asymmetry_center
         r_max = self._petro_extent * self.petrosian_radius_circ
-        ap_total = photutils.CircularAperture(self._asymmetry_center, r_max)
-        flux_total = ap_total.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
         
-        r_20 = opt.brentq(self._concentration_function, r_min, r_max,
-                          args=(0.2, flux_total), xtol=1e-6)
-        r_80 = opt.brentq(self._concentration_function, r_min, r_max,
-                          args=(0.8, flux_total), xtol=1e-6)
+        r_20 = _radius_at_fraction_of_total(image, center, r_max, 0.2)
+        r_80 = _radius_at_fraction_of_total(image, center, r_max, 0.8)
         
         return 5.0 * np.log10(r_80 / r_20)
 
@@ -958,43 +1006,6 @@ class SourceMorphology(object):
     # SHAPE ASYMMETRY #
     ###################
 
-    def _norm_flux_function_circ(self, r, ratio):
-        """
-        Helper function to calculate the FWHM of a galaxy profile,
-        assuming circular symmetry.
-        
-        For a pixel-wide circular annulus around the brightest pixel
-        with radius ``r``, return the mean flux over the annulus
-        divided by the flux of the brightest pixel, minus the "target"
-        ratio (0.5 for half the FWHM).
-
-        """
-        r_in = r - 0.5 * self._annulus_width
-        r_out = r + 0.5 * self._annulus_width
-        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
-        ic, jc = int(yc), int(xc)
-
-        max_flux = self._cutout_stamp_maskzeroed_double[ic, jc]
-        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
-        circ_annulus_mean_flux = _aperture_mean(
-            circ_annulus, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='exact')
-
-        return circ_annulus_mean_flux / max_flux - ratio
-
-    @lazyproperty
-    def _radius_at_half_maximum(self):
-        """
-        Compute the radius at half-maximum (half of the FWHM)
-        assuming circular symmetry.
-        """
-        r_min = 2.0
-        r_max = self._dist_to_closest_corner
-        ratio = 0.5
-        r_hm = opt.brentq(self._norm_flux_function_circ, r_min, r_max,
-                          args=(ratio,), xtol=1e-6)
-        return r_hm
-
     @lazyproperty
     def _segmap_pawlik(self):
         """
@@ -1009,17 +1020,22 @@ class SourceMorphology(object):
         
         """
         image = self._cutout_stamp_maskzeroed_double
+        mask = self._mask_stamp
         
-        # Center at brightest pixel
-        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
+        # Center at (center of) brightest pixel
+        xc = self._x_maxval_stamp + 0.5
+        yc = self._y_maxval_stamp + 0.5
         ic, jc = int(yc), int(xc)
 
         # Create a circular annulus around the brightest pixel
         # with inner and outer radii equal to 20 and 40 times
         # the *radius* at half-maximum (because 20 and 40 times
         # the FWHM seems like too much!).
-        r_in = 20.0 * self._radius_at_half_maximum
-        r_out = 40.0 * self._radius_at_half_maximum
+        r_max = self._dist_to_closest_corner
+        r_half_maximum = _radius_at_fraction_of_maximum(
+            image, mask, r_max, self._annulus_width, 0.5)
+        r_in = 20.0 * r_half_maximum
+        r_out = 40.0 * r_half_maximum
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
@@ -1056,7 +1072,73 @@ class SourceMorphology(object):
         to the edge of the main source segment, as defined in
         Pawlik et al. (2016).
         """
-        return None
+        image = self._cutout_stamp_maskzeroed_double
+        ny, nx = image.shape
+
+        # Center at (center of) brightest pixel
+        xc = self._x_maxval_stamp + 0.5
+        yc = self._y_maxval_stamp + 0.5
+
+        # Distances from all pixels to the brightest pixel
+        ypos, xpos = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
+        distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
+        
+        # Only consider pixels within the segmap.
+        rmax = np.max(distances[self._segmap_pawlik])
+
+        return rmax
+
+    def _outer_asymmetry_function(self, center):
+        """
+        Helper function to determine the outer asymmetry and center of
+        outer asymmetry. Similar to self._asymmetry_function.
+        """
+        image = self._cutout_stamp_maskzeroed_double
+        ny, nx = image.shape
+
+        ap = photutils.CircularAperture(center, self.rmax)
+
+        #~ ap = photutils.CircularAnnulus(center, 
+            #~ (self._xc_stamp, self._yc_stamp), r_in, r_out)
+
+
+        xc, yc = np.floor(center) + 0.5  # center of pixel
+        dx = min(nx-xc, xc)
+        dy = min(ny-yc, yc)
+        # Crop to region that can be rotated around center:
+        xslice = slice(int(xc-dx), int(xc+dx))
+        yslice = slice(int(yc-dy), int(yc+dy))
+        image = image[yslice, xslice]
+        image_180 = image[::-1, ::-1]
+
+        ap_area = _aperture_area(ap, self._mask_stamp)
+        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
+        ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
+        asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_flux
+
+        return asym
+
+    @lazyproperty
+    def _outer_asymmetry_center(self):
+        """
+        Find the position of the central pixel (relative to the
+        "postage stamp" cutout) that minimizes the asymmetry.
+        """
+        # Initial guess
+        center_0 = np.array([self._xc_stamp, self._yc_stamp])
+        
+        # Find minimum at pixel precision (xtol=1)
+        center_asym = opt.fmin(self._asymmetry_function, center_0, xtol=1.0,
+                               disp=0)
+
+        return np.floor(center_asym)
+
+    @lazyproperty
+    def outer_asymmetry(self):
+        """
+        Calculate asymmetry as described in Lotz et al. (2004).
+        """
+        return self._asymmetry_function(self._asymmetry_center)
 
 
 def source_morphology(image, segmap, **kwargs):
