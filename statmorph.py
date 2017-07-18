@@ -29,6 +29,94 @@ def _quantile(sorted_values, q):
     else:
         return sorted_values[int(q*len(sorted_values))]
 
+# The photutils aperture photometry functions *almost* do what I want,
+# but not quite, so unfortunately we need the following:
+
+def _aperture_area(ap, mask, **kwargs):
+    """
+    Calculate the area of a photutils aperture for a given mask.
+    
+    Parameters
+    ----------
+    ap : ``photutils.PixelAperture``
+        The aperture object.
+    mask : array-like (bool)
+        The mask.
+
+    Other parameters
+    ----------------
+    kwargs : `~photutils.PixelAperture` properties.
+
+    Returns
+    -------
+    area : float
+        The area of the aperture.
+
+    """
+    return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
+
+def _aperture_mean(ap, image, mask, **kwargs):
+    """
+    Calculate the mean flux of an image, given an aperture and a mask.
+    
+    Parameters
+    ----------
+    ap : ``photutils.PixelAperture``
+        The aperture object.
+    image : array-like
+        The image.
+    mask : array-like (bool)
+        The mask.
+
+    Other parameters
+    ----------------
+    kwargs : `~photutils.PixelAperture` properties.
+
+    Returns
+    -------
+    mean : float
+        The mean value.
+
+    """
+    image2 = image.copy()  # because I don't trust Python sometimes
+    image2[mask] = 0.0
+    flux_sum = ap.do_photometry(image2, **kwargs)[0][0]
+
+    return flux_sum / _aperture_area(ap, mask, **kwargs)
+
+def _aperture_std(ap, image, mask, **kwargs):
+    """
+    Calculate the standard deviation of the flux, given an aperture
+    and a mask.
+    
+    Parameters
+    ----------
+    ap : ``photutils.PixelAperture``
+        The aperture object.
+    image : array-like
+        The image.
+    mask : array-like (bool)
+        The mask.
+
+    Other parameters
+    ----------------
+    kwargs : `~photutils.PixelAperture` properties.
+
+    Returns
+    -------
+    std : float
+        The standard deviation.
+
+    """
+    sqr_diff = (image - _aperture_mean(ap, image, mask, **kwargs))**2
+    sqr_diff[mask] = 0.0
+    sqr_diff_sum = ap.do_photometry(sqr_diff, **kwargs)[0][0]
+
+    return np.sqrt(sqr_diff_sum / _aperture_area(ap, mask, **kwargs))
+
+
+# This is the main morphology class:
+
 class SourceMorphology(object):
     """
     Class to measure the morphological parameters of a single labeled
@@ -230,10 +318,12 @@ class SourceMorphology(object):
         ellip_aperture = photutils.EllipticalAperture(
             (self._xc_stamp, self._yc_stamp), a, b, theta)
 
-        ellip_annulus_mean_flux = ellip_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / ellip_annulus.area()
-        ellip_aperture_mean_flux = ellip_aperture.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / ellip_aperture.area()
+        ellip_annulus_mean_flux = _aperture_mean(
+            ellip_annulus, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='center')
+        ellip_aperture_mean_flux = _aperture_mean(
+            ellip_aperture, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='center')
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -256,11 +346,12 @@ class SourceMorphology(object):
         circ_aperture = photutils.CircularAperture(
             (self._xc_stamp, self._yc_stamp), r)
 
-        circ_annulus_mean_flux = circ_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / circ_annulus.area()
-        circ_aperture_mean_flux = circ_aperture.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='center')[0][0] / circ_aperture.area()
-
+        circ_annulus_mean_flux = _aperture_mean(
+            circ_annulus, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='center')
+        circ_aperture_mean_flux = _aperture_mean(
+            circ_aperture, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='center')
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -1004,31 +1095,21 @@ class SourceMorphology(object):
         xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
 
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
+        circ_annulus_mean = _aperture_mean(
+            circ_annulus, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='exact')
+        circ_annulus_std = _aperture_std(
+            circ_annulus, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='exact')
 
-        # Only consider area within the cutout
-        circ_annulus_area = circ_annulus.do_photometry(
-            np.float64(~self._mask_stamp), method='exact')[0][0]
-        if circ_annulus_area == 0:
-            raise Exception('Annulus completely outside postage stamp!')
+        print('Mean:', circ_annulus_mean)
+        print('Std:', circ_annulus_std)
 
-        circ_annulus_flux_sum = circ_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
-        circ_annulus_flux_mean = circ_annulus_flux_sum / circ_annulus_area
-        sqr_diff = (self._cutout_stamp_maskzeroed_double - circ_annulus_flux_mean)**2
-        circ_annulus_flux_sum2 = circ_annulus.do_photometry(
-            sqr_diff, method='exact')[0][0]
-        circ_annulus_flux_std = np.sqrt(circ_annulus_flux_sum2 / circ_annulus_area)
-        print('Mean:', circ_annulus_flux_mean)
-        print('Std:', circ_annulus_flux_std)
-
-        # For comparison
-        print('Sky Mean:', self._sky_mean)
-        print('Sky Std:', self._sky_sigma)
-
+        # Smooth image slightly
         image = ndi.uniform_filter(
             self._cutout_stamp_maskzeroed_double, size=3.0)
-        #~ threshold = self._sky_mean + self._sky_sigma
-        threshold = circ_annulus_flux_mean + circ_annulus_flux_std
+
+        threshold = circ_annulus_mean + circ_annulus_std
         above_threshold = image >= threshold
 
         # Center at brightest pixel
