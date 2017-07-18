@@ -14,6 +14,7 @@ import skimage.feature
 import skimage.morphology
 from astropy.utils import lazyproperty
 from astropy.stats import gaussian_sigma_to_fwhm
+from astropy.stats import sigma_clipped_stats
 import photutils
 
 __all__ = ['SourceMorphology', 'source_morphology']
@@ -28,6 +29,14 @@ def _quantile(sorted_values, q):
         return sorted_values[-1]
     else:
         return sorted_values[int(q*len(sorted_values))]
+
+def _mode(a):
+    """
+    Takes a masked array as input and returns the "mode"
+    as defined in Bertin & Arnouts (1996):
+    mode = 2.5 * median - 1.5 * mean
+    """
+    return 2.5 * np.ma.median(a) - 1.5 * np.ma.mean(a)
 
 # The photutils aperture photometry functions *almost* do what I want,
 # but not quite, so unfortunately we need the following:
@@ -320,10 +329,10 @@ class SourceMorphology(object):
 
         ellip_annulus_mean_flux = _aperture_mean(
             ellip_annulus, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='center')
+            self._mask_stamp, method='exact')
         ellip_aperture_mean_flux = _aperture_mean(
             ellip_aperture, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='center')
+            self._mask_stamp, method='exact')
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -348,10 +357,10 @@ class SourceMorphology(object):
 
         circ_annulus_mean_flux = _aperture_mean(
             circ_annulus, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='center')
+            self._mask_stamp, method='exact')
         circ_aperture_mean_flux = _aperture_mean(
             circ_aperture, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='center')
+            self._mask_stamp, method='exact')
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -458,8 +467,8 @@ class SourceMorphology(object):
         theta = self._props.orientation.value
         ellip_annulus = photutils.EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
-        ellip_annulus_mean_flux = ellip_annulus.do_photometry(
-            cutout_smooth, method='exact')[0][0] / ellip_annulus.area()
+        ellip_annulus_mean_flux = _aperture_mean(
+            ellip_annulus, cutout_smooth, self._mask_stamp, method='exact')
         segmap_gini = np.where(cutout_smooth >= ellip_annulus_mean_flux, 1, 0)
         
         return segmap_gini
@@ -1041,8 +1050,6 @@ class SourceMorphology(object):
         ratio (0.5 for half the FWHM).
 
         """
-        #~ r_in = r - 1.0
-        #~ r_out = r + 1.0
         r_in = r - 0.5
         r_out = r + 0.5
         xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
@@ -1050,8 +1057,9 @@ class SourceMorphology(object):
 
         max_flux = self._cutout_stamp_maskzeroed_double[ic, jc]
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
-        circ_annulus_mean_flux = circ_annulus.do_photometry(
-            self._cutout_stamp_maskzeroed_double, method='exact')[0][0] / circ_annulus.area()
+        circ_annulus_mean_flux = _aperture_mean(
+            circ_annulus, self._cutout_stamp_maskzeroed_double,
+            self._mask_stamp, method='exact')
 
         return circ_annulus_mean_flux / max_flux - ratio
 
@@ -1081,49 +1089,47 @@ class SourceMorphology(object):
         based on the Petrosian radius.
         
         """
+        image = self._cutout_stamp_maskzeroed_double
         
-        # Create a circular annulus around the brightest pixel
-        # with inner and outer radii equal to
-        # 20 and 40 times the radius at half-maximum (20 and 40 times
-        # the FWHM seems like too much!)
-        #
-        # In fact, I might replace this step with the sky box from
-        # the other asymmetry calculation.
-
-        r_in = 20.0 * self._radius_at_half_maximum
-        r_out = 40.0 * self._radius_at_half_maximum
-        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
-
-        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
-        circ_annulus_mean = _aperture_mean(
-            circ_annulus, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='exact')
-        circ_annulus_std = _aperture_std(
-            circ_annulus, self._cutout_stamp_maskzeroed_double,
-            self._mask_stamp, method='exact')
-
-        print('Mean:', circ_annulus_mean)
-        print('Std:', circ_annulus_std)
-
-        # Smooth image slightly
-        image = ndi.uniform_filter(
-            self._cutout_stamp_maskzeroed_double, size=3.0)
-
-        threshold = circ_annulus_mean + circ_annulus_std
-        above_threshold = image >= threshold
-
         # Center at brightest pixel
+        xc, yc = self._x_maxval_stamp, self._y_maxval_stamp
         ic, jc = int(yc), int(xc)
 
-        # Neighbor "footprint" for growing regions, including corners:
+        # Create a circular annulus around the brightest pixel
+        # with inner and outer radii equal to 20 and 40 times
+        # the *radius* at half-maximum (because 20 and 40 times
+        # the FWHM seems like too much!).
+        r_in = 20.0 * self._radius_at_half_maximum
+        r_out = 40.0 * self._radius_at_half_maximum
+        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
+
+        # Convert circular annulus aperture to binary mask
+        circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
+        # With the same shape as ``image``
+        circ_annulus_mask = circ_annulus_mask.to_image(image.shape)
+        # Invert mask and exclude other sources
+        total_mask = self._mask_stamp | np.logical_not(circ_annulus_mask)
+        # Do sigma-clipping -- 5 iterations should be enough
+        mean, median, std = sigma_clipped_stats(
+            image, mask=total_mask, sigma=3.0, iters=5, cenfunc=_mode)
+
+        # Mode as defined in Bertin & Arnouts (1996)
+        mode = 2.5*median - 1.5*mean
+
+        # Smooth image slightly and apply 1-sigma threshold
+        image_smooth = ndi.uniform_filter(image, size=3.0)
+        threshold = mode + std
+        above_threshold = image_smooth >= threshold
+
+        # 8-connected neighbor "footprint" for growing regions:
         s = ndi.generate_binary_structure(2, 2)
 
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
         if labeled_array[ic, jc] == 0:
-            # Centroid is not part of the main clump.
-            return None
+            raise Exception('Brightest pixel is outside the main segment?')
 
         return labeled_array == labeled_array[ic, jc]
+
 
 def source_morphology(image, segmap, **kwargs):
     """
