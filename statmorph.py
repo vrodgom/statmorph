@@ -148,9 +148,8 @@ class SourceMorphology(object):
         in order to calculate the signal-to-noise correctly.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
-        the size of the segment containing the source (the original
-        implementation adds 100 pixels in each dimension). The value
-        must be >= 1. The default value is 1.5 (i.e., 50% larger).
+        the minimal bounding box containing the source. The value
+        must be >= 1. The default value is 2.0 (i.e., 2 times larger).
     annulus_width : float, optional
         The width (in pixels) of the annuli used to calculate the
         Petrosian radius and other quantities. The default value is 1.0.
@@ -193,6 +192,11 @@ class SourceMorphology(object):
         In the MID calculations, this is the size (in pixels)
         of the constant kernel used to regularize the MID segmap.
         The default value is 3.0.
+    niter_bh_mid : int, optional
+        When calculating the multimode statistic, this is the number of
+        iterations in the basin-hopping stage of the maximization. The
+        default value of 100 is probably enough for "production" runs,
+        but lower values can significantly increase speed.
     sigma_mid : float, optional
         In the MID calculations, this is the smoothing scale (in pixels)
         used to compute the intensity (I) statistic. The default is 1.0.
@@ -212,12 +216,12 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=1.5, annulus_width=1.0, eta=0.2,
+                 cutout_extent=2.0, annulus_width=1.0, eta=0.2,
                  petro_fraction_gini=0.2, remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
                  petro_extent=1.5, petro_fraction_cas=0.25,
-                 boxcar_size_mid=3.0, sigma_mid=1.0, sky_num_fwhm=20.0,
-                 boxcar_size_shape_asym=3.0):
+                 boxcar_size_mid=3.0, niter_bh_mid=100, sigma_mid=1.0,
+                 sky_num_fwhm=20.0, boxcar_size_shape_asym=3.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._annulus_width = annulus_width
@@ -230,6 +234,7 @@ class SourceMorphology(object):
         self._petro_extent = petro_extent
         self._petro_fraction_cas = petro_fraction_cas
         self._boxcar_size_mid = boxcar_size_mid
+        self._niter_bh_mid = niter_bh_mid
         self._sigma_mid = sigma_mid
         self._sky_num_fwhm = sky_num_fwhm
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
@@ -923,10 +928,10 @@ class SourceMorphology(object):
         # STAGE 1: brute-force
 
         # We start with a relatively coarse separation between the
-        # quantiles, equal to twice the value used in the original IDL
+        # quantiles, equal to the value used in the original IDL
         # implementation. If every calculated ratio is invalid, we
         # try a smaller size.
-        mid_stepsize = 0.04
+        mid_stepsize = 0.02
 
         while True:
             quantile_array = np.arange(q_min, q_max, mid_stepsize)
@@ -947,17 +952,15 @@ class SourceMorphology(object):
 
         # STAGE 2: basin-hopping method
 
-        # The results seem quite robust to changes in the
-        # following two parameters, so I just leave them
-        # hardcoded here for now:
-        mid_bh_niter = 5
-        mid_bh_rel_temp = 0.2
+        # The results seem quite robust to changes in this parameter,
+        # so I leave it hardcoded for now:
+        mid_bh_rel_temp = 0.5
 
-        temperature = -1.0 * ratio_min * mid_bh_rel_temp
+        temperature = -1.0 * mid_bh_rel_temp * ratio_min
         res = opt.basinhopping(self._multimode_ratio, q0,
             minimizer_kwargs={"method": "Nelder-Mead"},
-            niter=mid_bh_niter, T=temperature, stepsize=mid_stepsize,
-            interval=mid_bh_niter, disp=False)
+            niter=self._niter_bh_mid, T=temperature, stepsize=mid_stepsize,
+            interval=self._niter_bh_mid/2, disp=False)
         q_final = res.x[0]
 
         # Finally, return A2/A1 instead of (A2/A1)*A2
