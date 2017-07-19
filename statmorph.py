@@ -83,9 +83,8 @@ def _radius_at_fraction_of_maximum(image, mask, r_max, annulus_width, fraction):
     max_flux = np.max(image)
     yc, xc = np.argwhere(image == max_flux)[0]
     center = np.array([xc, yc]) + 0.5
-    r = opt.brentq(_fraction_of_maximum_function, r_min, r_max,
-                   args=(image, mask, center, annulus_width, fraction, max_flux),
-                   xtol=1e-6)
+    r = opt.brentq(_fraction_of_maximum_function, r_min, r_max, xtol=1e-6,
+                   args=(image, mask, center, annulus_width, fraction, max_flux))
 
     return r
 
@@ -391,7 +390,7 @@ class SourceMorphology(object):
         a_min = self._annulus_width
         a_max = self._dist_to_closest_corner
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
-                                  a_min, a_max, xtol=1.0)
+                                  a_min, a_max, xtol=1e-6)
         
         return rpetro_ellip
 
@@ -403,7 +402,7 @@ class SourceMorphology(object):
         r_min = self._annulus_width
         r_max = self._dist_to_closest_corner
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
-                                 r_min, r_max, xtol=1.0)
+                                 r_min, r_max, xtol=1e-6)
 
         return rpetro_circ
 
@@ -655,7 +654,7 @@ class SourceMorphology(object):
             r = self._petro_extent * self.petrosian_radius_circ
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
-            r_in = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+            r_in = self.half_light_radius
             r_out = self.rmax
             ap = photutils.CircularAnnulus(center, r_in, r_out)
         elif kind == 'shape':
@@ -1061,6 +1060,33 @@ class SourceMorphology(object):
     ###################
 
     @lazyproperty
+    def half_light_radius(self):
+        """
+        The radius of a circular aperture containing 50% of the light,
+        assuming that the center is at the brightest pixel and the total
+        is at ``rmax`` (Pawlik et al. 2016).
+        """
+        image = self._cutout_stamp_maskzeroed
+        
+        # Center at brightest pixel
+        center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
+        
+        return _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+
+    @lazyproperty
+    def radius_at_half_max(self):
+        """
+        The radius at half-maximum (half of the FWHM).
+        """
+        image = self._cutout_stamp_maskzeroed
+        mask = self._mask_stamp
+        r_max = self._dist_to_closest_corner
+        r_half_max = _radius_at_fraction_of_maximum(
+            image, mask, r_max, self._annulus_width, 0.5)
+        
+        return r_half_max
+
+    @lazyproperty
     def _segmap_shape_asym(self):
         """
         Construct a binary detection mask as described in Section 3.1
@@ -1074,7 +1100,6 @@ class SourceMorphology(object):
         
         """
         image = self._cutout_stamp_maskzeroed
-        mask = self._mask_stamp
         
         # Center at (center of) brightest pixel
         xc = self._x_maxval_stamp + 0.5
@@ -1085,12 +1110,8 @@ class SourceMorphology(object):
         # with inner and outer radii equal to 20 and 40 times
         # the *radius* at half-maximum (because 20 and 40 times
         # the FWHM seems like too much!).
-        r_max = self._dist_to_closest_corner
-        r_half_maximum = _radius_at_fraction_of_maximum(
-            image, mask, r_max, self._annulus_width, 0.5)
-        r_in = self._sky_num_fwhm * r_half_maximum
-        r_out = 2.0 * self._sky_num_fwhm * r_half_maximum
-
+        r_in = self._sky_num_fwhm * self.radius_at_half_max
+        r_out = 2.0 * self._sky_num_fwhm * self.radius_at_half_max
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
