@@ -1248,9 +1248,17 @@ def source_morphology(image, segmap, **kwargs):
         source. The morphological parameters can be accessed
         as attributes or keys.
 
+    See Also
+    --------
+    `SourceMorphology` : Class to measure morphological parameters.
+    
+    Examples
+    --------
+    See `README.md` for a usage example.
+    
     References
     ----------
-    Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163
+    See `README.md` for a list of references.
 
     """
     assert(image.shape == segmap.shape)
