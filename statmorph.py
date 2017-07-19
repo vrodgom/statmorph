@@ -519,6 +519,9 @@ class SourceMorphology(object):
     def _slice_skybox(self):
         """
         Find a region of the sky that only contains background.
+        
+        In principle, a more accurate approach could be adopted
+        (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
         border_size = self._border_size
         skybox_size = self._skybox_size
@@ -577,30 +580,49 @@ class SourceMorphology(object):
 
         return np.sum(np.abs(bkg_smooth - bkg)) / float(bkg.size)
 
-    def _asymmetry_function(self, center):
+    def _asymmetry_function(self, center, image, kind):
         """
         Helper function to determine the asymmetry and center of asymmetry.
-        """
-        image = self._cutout_stamp_maskzeroed_double
+        The idea is to minimize the output of this function.
+        
+        Parameters
+        ----------
+        center : tuple or array-like
+            The (x,y) position of the center.
+        image : array-like
+            The 2D image.
+        kind : {'cas', 'outer', 'shape'}
+            Whether to calculate the traditional CAS asymmetry (default),
+            outer asymmetry or shape asymmetry.
+        
+        Returns
+        -------
+        asym : The asymmetry statistic for the given center.
+        
+        Notes
+        -----
+        Here are some notes about why I'm *not* using
+        skimage.transform.rotate. The following line would
+        work correctly in skimage version 0.13.0:
+        skimage.transform.rotate(image, 180.0, center=np.floor(center))
+        However, note that the "center" argument must be truncated,
+        which is not mentioned in the documentation
+        (https://github.com/scikit-image/scikit-image/issues/1732).
+        Also, the center must be given as (x,y), not (y,x), which is
+        the opposite (!) of what the skimage documentation says...
+        Such incomplete and contradictory documentation in skimage
+        does not inspire much confidence (probably something will
+        change in future versions), so instead we do the 180 deg
+        rotation by hand. Also, since 180 deg is a very special kind
+        of rotation, the current implementation is probably faster.
 
-        # Here are some notes about why I'm *not* using
-        # skimage.transform.rotate. The following line would
-        # work correctly in skimage version 0.13.0:
-        # skimage.transform.rotate(image, 180.0, center=np.floor(center))
-        # However, note that the "center" argument must be truncated,
-        # which is not mentioned in the documentation
-        # (https://github.com/scikit-image/scikit-image/issues/1732).
-        # Also, the center must be given as (x,y), not (y,x), which is
-        # the opposite (!) of what the skimage documentation says...
-        # Such incomplete and contradictory documentation in skimage
-        # does not inspire much confidence (probably something will
-        # change in future versions), so instead we do the 180 deg
-        # rotation by hand. Also, this approach is probably faster:
+        """
         ny, nx = image.shape
+
+        # Crop to region that can be rotated around center
         xc, yc = np.floor(center)
         dx = min(nx-1-xc, xc)
         dy = min(ny-1-yc, yc)
-        # Crop to region that can be rotated around center:
         xslice = slice(int(xc-dx), int(xc+dx+1))
         yslice = slice(int(yc-dy), int(yc+dy+1))
         image = image[yslice, xslice]
@@ -610,13 +632,27 @@ class SourceMorphology(object):
         center = np.array([dx, dy])
 
         # Note that aperture is defined for the new coordinates
-        r = self._petro_extent * self.petrosian_radius_circ
-        ap = photutils.CircularAperture(center, r)
+        if kind == 'cas':
+            r = self._petro_extent * self.petrosian_radius_circ
+            ap = photutils.CircularAperture(center, r)
+        elif kind == 'outer':
+            r_in = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+            r_out = self.rmax
+            ap = photutils.CircularAnnulus(center, r_in, r_out)
+        elif kind == 'shape':
+            ap = photutils.CircularAperture(center, self.rmax)
+        else:
+            raise Exception('Asymmetry kind not understood:', kind)
 
-        ap_area = _aperture_area(ap, self._mask_stamp)
-        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
+        # Apply eq. 10 from Lotz et al. (2004)
+        ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
-        asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_flux
+        if kind == 'shape':
+            # The shape asymmetry of the background is zero
+            asym = ap_abs_diff / ap_abs_sum
+        else:
+            ap_area = _aperture_area(ap, self._mask_stamp)
+            asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
 
         return asym
 
@@ -624,14 +660,16 @@ class SourceMorphology(object):
     def _asymmetry_center(self):
         """
         Find the position of the central pixel (relative to the
-        "postage stamp" cutout) that minimizes the asymmetry.
+        "postage stamp" cutout) that minimizes the (CAS) asymmetry.
         """
+        image = self._cutout_stamp_maskzeroed_double
+
         # Initial guess
         center_0 = np.array([self._xc_stamp, self._yc_stamp])
         
         # Find minimum at pixel precision (xtol=1)
-        center_asym = opt.fmin(self._asymmetry_function, center_0, xtol=1.0,
-                               disp=0)
+        center_asym = opt.fmin(self._asymmetry_function, center_0,
+                               args=(image, 'cas'), xtol=1.0, disp=0)
 
         return np.floor(center_asym)
 
@@ -640,7 +678,11 @@ class SourceMorphology(object):
         """
         Calculate asymmetry as described in Lotz et al. (2004).
         """
-        return self._asymmetry_function(self._asymmetry_center)
+        image = self._cutout_stamp_maskzeroed_double
+        asym = self._asymmetry_function(self._asymmetry_center,
+                                        image, 'cas')
+        
+        return asym
 
     @lazyproperty
     def concentration(self):
@@ -1081,50 +1123,20 @@ class SourceMorphology(object):
 
         return rmax
 
-    def _outer_asymmetry_function(self, center):
-        """
-        Helper function to determine the outer asymmetry and center of
-        outer asymmetry. Similar to self._asymmetry_function.
-        """
-        image = self._cutout_stamp_maskzeroed_double
-        ny, nx = image.shape
-
-        xc, yc = np.floor(center)
-        dx = min(nx-1-xc, xc)
-        dy = min(ny-1-yc, yc)
-        # Crop to region that can be rotated around center:
-        xslice = slice(int(xc-dx), int(xc+dx)+1)
-        yslice = slice(int(yc-dy), int(yc+dy)+1)
-        image = image[yslice, xslice]
-        image_180 = image[::-1, ::-1]
-
-        # Redefine center
-        center = np.array([dx, dy])
-
-        # Note that aperture is defined for the new coordinates
-        r_in = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
-        r_out = self.rmax
-        ap = photutils.CircularAnnulus(center, r_in, r_out)
-
-        ap_area = _aperture_area(ap, self._mask_stamp)
-        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
-        ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
-        asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_flux
-
-        return asym
-
     @lazyproperty
     def _outer_asymmetry_center(self):
         """
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the outer asymmetry.
         """
+        image = self._cutout_stamp_maskzeroed_double
+        
         # Initial guess
         center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
         # Find minimum at pixel precision (xtol=1)
-        center_asym = opt.fmin(self._outer_asymmetry_function, center_0,
-                               xtol=1.0, disp=0)
+        center_asym = opt.fmin(self._asymmetry_function, center_0,
+                               args=(image, 'outer'), xtol=1.0, disp=0)
 
         return np.floor(center_asym)
 
@@ -1133,7 +1145,39 @@ class SourceMorphology(object):
         """
         Calculate outer asymmetry as described in Pawlik et al. (2016).
         """
-        return self._outer_asymmetry_function(self._outer_asymmetry_center)
+        image = self._cutout_stamp_maskzeroed_double
+        asym = self._asymmetry_function(self._outer_asymmetry_center,
+                                        image, 'outer')
+        
+        return asym
+
+    @lazyproperty
+    def _shape_asymmetry_center(self):
+        """
+        Find the position of the central pixel (relative to the
+        "postage stamp" cutout) that minimizes the shape asymmetry.
+        """
+        image = np.where(self._segmap_pawlik, 1.0, 0.0)
+
+        # Initial guess
+        center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
+        
+        # Find minimum at pixel precision (xtol=1)
+        center_asym = opt.fmin(self._asymmetry_function, center_0,
+                               args=(image, 'shape'), xtol=1.0, disp=0)
+
+        return np.floor(center_asym)
+
+    @lazyproperty
+    def shape_asymmetry(self):
+        """
+        Calculate shape asymmetry as described in Pawlik et al. (2016).
+        """
+        image = np.where(self._segmap_pawlik, 1.0, 0.0)
+        asym = self._asymmetry_function(self._outer_asymmetry_center,
+                                        image, 'shape')
+
+        return asym
 
 
 def source_morphology(image, segmap, **kwargs):

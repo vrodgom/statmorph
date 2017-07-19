@@ -64,6 +64,9 @@ quantities = [
     'multimode',
     'intensity',
     'deviation',
+    'rmax',
+    'outer_asymmetry',
+    'shape_asymmetry',
 ]
 
 start_all = time.time()
@@ -79,19 +82,22 @@ print('\nTotal time: %.6f s.' % (time.time() - start_all))
 For Pan-STARRS galaxy **J235958.6+281704** in the g-band, this returns:
 
 ```
-    petrosian_radius_circ:  55.760521   (Time: 0.013806 s)
-   petrosian_radius_ellip:  97.554697   (Time: 0.055830 s)
-                     gini:   0.582624   (Time: 0.107787 s)
-                      m20:  -1.947202   (Time: 0.022409 s)
-             sn_per_pixel:   4.073095   (Time: 0.001191 s)
-                asymmetry:   0.170386   (Time: 0.066237 s)
-            concentration:   3.210266   (Time: 0.007270 s)
-               smoothness:   0.098102   (Time: 0.006094 s)
-                multimode:   0.027788   (Time: 0.709327 s)
-                intensity:   0.018720   (Time: 0.089640 s)
-                deviation:   0.018686   (Time: 0.002412 s)
+    petrosian_radius_circ:  55.290919   (Time: 0.029993 s)
+   petrosian_radius_ellip:  97.719538   (Time: 0.797421 s)
+                     gini:   0.574926   (Time: 0.138750 s)
+                      m20:  -1.957585   (Time: 0.029239 s)
+             sn_per_pixel:   3.971230   (Time: 0.001377 s)
+                asymmetry:   0.147391   (Time: 0.117764 s)
+            concentration:   3.204953   (Time: 0.009796 s)
+               smoothness:   0.079202   (Time: 0.009536 s)
+                multimode:   0.027788   (Time: 1.078006 s)
+                intensity:   0.018720   (Time: 0.139468 s)
+                deviation:   0.018686   (Time: 0.002891 s)
+                     rmax: 119.067208   (Time: 0.301612 s)
+          outer_asymmetry:   0.191176   (Time: 0.332309 s)
+          shape_asymmetry:   0.198903   (Time: 0.004798 s)
 
-Total time: 1.082431 s.
+Total time: 2.993595 s.
 ```
 
 ### Authors ###
