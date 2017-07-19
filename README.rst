@@ -27,7 +27,7 @@ associated segmentation map, stellar mask (optional) and weights
 labeled sources in the segmentation map, and finally prints some
 properties of the first labeled source.
 
-.. example::
+.. code:: python
 
     import numpy as np
     import statmorph
@@ -79,10 +79,9 @@ properties of the first labeled source.
               quantity, value, time.time() - start))
     print('\nTotal time: %.6f s.' % (time.time() - start_all))
 
+For Pan-STARRS galaxy *J235958.6+281704* in the g-band, this returns:
 
-For Pan-STARRS galaxy J235958.6+281704 in the g-band, this returns:
-
-.. output::
+::
 
     petrosian_radius_circ:  55.184543    (Time:  0.047625 s)
    petrosian_radius_ellip:  97.532795    (Time:  1.222480 s)
@@ -101,8 +100,9 @@ For Pan-STARRS galaxy J235958.6+281704 in the g-band, this returns:
           outer_asymmetry:   0.191133    (Time:  0.170721 s)
           shape_asymmetry:   0.198903    (Time:  0.004484 s)
 
-Total time: 14.168886 s.
+::
 
+    Total time: 14.168886 s.
 
 Authors
 -------
@@ -128,24 +128,29 @@ provided as a starting point and is not meant to be exhaustive. Please
 see the references within each publication for a more complete list.
 
 - Gini--M20 statistics:
+
   - Abraham R. G., van den Bergh S., Nair P., 2003, ApJ, 588, 218
   - Lotz J. M., Primack J., Madau P., 2004, AJ, 128, 163.
 
 - Concentration, asymmetry and clumpiness (CAS) statistics:
+
   - Bershady M. A., Jangren A., Conselice C. J., 2000, AJ, 119, 2645
   - Conselice C. J., 2003, ApJS, 147, 1
 
 - Multimode, intensity and deviation (MID) statistics:
+
   - Freeman P. E., Izbicki R., Lee A. B., Newman J. A., Conselice C. J.,
     Koekemoer A. M., Lotz J. M., Mozena M., 2013, MNRAS, 434, 282
   - Peth M. A. et al., 2016, MNRAS, 458, 963
 
 - Outer asymmetry:
+
   - Wen Z. Z., Zheng X. Z., Xia An F., 2014, ApJ, 787, 130
   - Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
     Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
 
 - Shape asymmetry:
+
   - Pawlik M. M., Wild V., Walcher C. J., Johansson P. H., Villforth C.,
     Rowlands K., Mendez-Abreu J., Hewlett T., 2016, MNRAS, 456, 3032
 
