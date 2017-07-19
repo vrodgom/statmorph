@@ -581,10 +581,7 @@ class SourceMorphology(object):
         """
         Helper function to determine the asymmetry and center of asymmetry.
         """
-        r = self._petro_extent * self.petrosian_radius_circ
-        ap = photutils.CircularAperture(center, r)
-
-        image = self._cutout_stamp_maskzeroed_double.copy()  # just in case
+        image = self._cutout_stamp_maskzeroed_double
 
         # Here are some notes about why I'm *not* using
         # skimage.transform.rotate. The following line would
@@ -600,14 +597,21 @@ class SourceMorphology(object):
         # change in future versions), so instead we do the 180 deg
         # rotation by hand. Also, this approach is probably faster:
         ny, nx = image.shape
-        xc, yc = np.floor(center) + 0.5  # center of pixel
-        dx = min(nx-xc, xc)
-        dy = min(ny-yc, yc)
+        xc, yc = np.floor(center)
+        dx = min(nx-1-xc, xc)
+        dy = min(ny-1-yc, yc)
         # Crop to region that can be rotated around center:
-        xslice = slice(int(xc-dx), int(xc+dx))
-        yslice = slice(int(yc-dy), int(yc+dy))
+        xslice = slice(int(xc-dx), int(xc+dx+1))
+        yslice = slice(int(yc-dy), int(yc+dy+1))
         image = image[yslice, xslice]
         image_180 = image[::-1, ::-1]
+
+        # Redefine center
+        center = np.array([dx, dy])
+
+        # Note that aperture is defined for the new coordinates
+        r = self._petro_extent * self.petrosian_radius_circ
+        ap = photutils.CircularAperture(center, r)
 
         ap_area = _aperture_area(ap, self._mask_stamp)
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
@@ -637,17 +641,6 @@ class SourceMorphology(object):
         Calculate asymmetry as described in Lotz et al. (2004).
         """
         return self._asymmetry_function(self._asymmetry_center)
-
-
-    #~ def _concentration_function(self, r, flux_fraction, flux_total):
-        #~ """
-        #~ Helper function to calculate the concentration.
-        #~ """
-        #~ ap = photutils.CircularAperture(self._asymmetry_center, r)
-        #~ ap_flux = ap.do_photometry(
-            #~ self._cutout_stamp_maskzeroed_double, method='exact')[0][0]
-
-        #~ return ap_flux / flux_total - flux_fraction
 
     @lazyproperty
     def concentration(self):
@@ -1096,20 +1089,22 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed_double
         ny, nx = image.shape
 
-        ap = photutils.CircularAperture(center, self.rmax)
-
-        #~ ap = photutils.CircularAnnulus(center, 
-            #~ (self._xc_stamp, self._yc_stamp), r_in, r_out)
-
-
-        xc, yc = np.floor(center) + 0.5  # center of pixel
-        dx = min(nx-xc, xc)
-        dy = min(ny-yc, yc)
+        xc, yc = np.floor(center)
+        dx = min(nx-1-xc, xc)
+        dy = min(ny-1-yc, yc)
         # Crop to region that can be rotated around center:
-        xslice = slice(int(xc-dx), int(xc+dx))
-        yslice = slice(int(yc-dy), int(yc+dy))
+        xslice = slice(int(xc-dx), int(xc+dx)+1)
+        yslice = slice(int(yc-dy), int(yc+dy)+1)
         image = image[yslice, xslice]
         image_180 = image[::-1, ::-1]
+
+        # Redefine center
+        center = np.array([dx, dy])
+
+        # Note that aperture is defined for the new coordinates
+        r_in = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+        r_out = self.rmax
+        ap = photutils.CircularAnnulus(center, r_in, r_out)
 
         ap_area = _aperture_area(ap, self._mask_stamp)
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
@@ -1122,23 +1117,23 @@ class SourceMorphology(object):
     def _outer_asymmetry_center(self):
         """
         Find the position of the central pixel (relative to the
-        "postage stamp" cutout) that minimizes the asymmetry.
+        "postage stamp" cutout) that minimizes the outer asymmetry.
         """
         # Initial guess
-        center_0 = np.array([self._xc_stamp, self._yc_stamp])
+        center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
         # Find minimum at pixel precision (xtol=1)
-        center_asym = opt.fmin(self._asymmetry_function, center_0, xtol=1.0,
-                               disp=0)
+        center_asym = opt.fmin(self._outer_asymmetry_function, center_0,
+                               xtol=1.0, disp=0)
 
         return np.floor(center_asym)
 
     @lazyproperty
     def outer_asymmetry(self):
         """
-        Calculate asymmetry as described in Lotz et al. (2004).
+        Calculate outer asymmetry as described in Pawlik et al. (2016).
         """
-        return self._asymmetry_function(self._asymmetry_center)
+        return self._outer_asymmetry_function(self._outer_asymmetry_center)
 
 
 def source_morphology(image, segmap, **kwargs):
