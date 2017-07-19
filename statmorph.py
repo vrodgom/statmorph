@@ -131,7 +131,8 @@ class SourceMorphology(object):
     Parameters
     ----------
     image : array-like
-        The 2D image containing the sources of interest.
+        A 2D image containing the sources of interest.
+        The image must already be background-subtracted.
     segmap : array-like (int) or ``photutils.SegmentationImage``
         A 2D segmentation map where different sources are 
         labeled with different positive integer values.
@@ -195,6 +196,15 @@ class SourceMorphology(object):
     sigma_mid : float, optional
         In the MID calculations, this is the smoothing scale (in pixels)
         used to compute the intensity (I) statistic. The default is 1.0.
+    sky_num_fwhm : scalar, optional
+        When calculating the shape asymmetry segmap, it is assumed that
+        a circular annulus with inner and outer *diameter* equal to
+        ``num_fwhm`` and 2*``num_fwhm`` times the FWHM of the galaxy
+        profile is representative of the background. The default is 20.
+    boxcar_size_shape_asym : float, optional
+        When calculating the shape asymmetry segmap, this is the size
+        (in pixels) of the constant kernel used to regularize the segmap.
+        The default value is 3.0.
 
     References
     ----------
@@ -202,10 +212,12 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=1.5, annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
-                 remove_outliers=False, n_sigma_outlier=10, border_size=5,
-                 skybox_size=20, petro_extent=1.5, petro_fraction_cas=0.25,
-                 boxcar_size_mid=3.0, sigma_mid=1.0):
+                 cutout_extent=1.5, annulus_width=1.0, eta=0.2,
+                 petro_fraction_gini=0.2, remove_outliers=False,
+                 n_sigma_outlier=10, border_size=5, skybox_size=20,
+                 petro_extent=1.5, petro_fraction_cas=0.25,
+                 boxcar_size_mid=3.0, sigma_mid=1.0, sky_num_fwhm=20.0,
+                 boxcar_size_shape_asym=3.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._annulus_width = annulus_width
@@ -219,6 +231,8 @@ class SourceMorphology(object):
         self._petro_fraction_cas = petro_fraction_cas
         self._boxcar_size_mid = boxcar_size_mid
         self._sigma_mid = sigma_mid
+        self._sky_num_fwhm = sky_num_fwhm
+        self._boxcar_size_shape_asym = boxcar_size_shape_asym
 
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
@@ -273,7 +287,7 @@ class SourceMorphology(object):
         return mask_stamp
 
     @lazyproperty
-    def _cutout_stamp_maskzeroed_double(self):
+    def _cutout_stamp_maskzeroed(self):
         """
         Return a data cutout with its shape and position determined
         by ``_slice_stamp``. Pixels belonging to other sources
@@ -282,15 +296,15 @@ class SourceMorphology(object):
         """
         cutout_stamp = self._props._data[self._slice_stamp]
         cutout_stamp[self._mask_stamp] = 0
-        # Some skimage functions require double precision:
-        return np.float64(cutout_stamp)
+
+        return cutout_stamp
 
     @lazyproperty
     def _sorted_pixelvals_stamp(self):
         """
         Just the sorted pixel values of the postage stamp.
         """
-        return np.sort(self._cutout_stamp_maskzeroed_double.flatten())
+        return np.sort(self._cutout_stamp_maskzeroed.flatten())
 
     @lazyproperty
     def _dist_to_closest_corner(self):
@@ -328,10 +342,10 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), a, b, theta)
 
         ellip_annulus_mean_flux = _aperture_mean(
-            ellip_annulus, self._cutout_stamp_maskzeroed_double,
+            ellip_annulus, self._cutout_stamp_maskzeroed,
             self._mask_stamp, method='exact')
         ellip_aperture_mean_flux = _aperture_mean(
-            ellip_aperture, self._cutout_stamp_maskzeroed_double,
+            ellip_aperture, self._cutout_stamp_maskzeroed,
             self._mask_stamp, method='exact')
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
@@ -355,10 +369,10 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), r)
 
         circ_annulus_mean_flux = _aperture_mean(
-            circ_annulus, self._cutout_stamp_maskzeroed_double,
+            circ_annulus, self._cutout_stamp_maskzeroed,
             self._mask_stamp, method='exact')
         circ_aperture_mean_flux = _aperture_mean(
-            circ_aperture, self._cutout_stamp_maskzeroed_double,
+            circ_aperture, self._cutout_stamp_maskzeroed,
             self._mask_stamp, method='exact')
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
@@ -408,18 +422,18 @@ class SourceMorphology(object):
                 [1, 1, 1],
             ])
             local_mean = ndi.filters.generic_filter(
-                self._cutout_stamp_maskzeroed_double, np.mean, footprint=local_footprint)
+                self._cutout_stamp_maskzeroed, np.mean, footprint=local_footprint)
             local_std = ndi.filters.generic_filter(
-                self._cutout_stamp_maskzeroed_double, np.std, footprint=local_footprint)
-            bad_pixels = (np.abs(self._cutout_stamp_maskzeroed_double - local_mean) >
+                self._cutout_stamp_maskzeroed, np.std, footprint=local_footprint)
+            bad_pixels = (np.abs(self._cutout_stamp_maskzeroed - local_mean) >
                           self._n_sigma_outlier * local_std)
-            cutout_gini = np.where(~bad_pixels, self._cutout_stamp_maskzeroed_double, 0)
+            cutout_gini = np.where(~bad_pixels, self._cutout_stamp_maskzeroed, 0)
             
             print('There are %d bad pixels.' % (np.sum(bad_pixels)))
             print('It took', time.time() - start, 's to remove them.')
 
         else:
-            cutout_gini = self._cutout_stamp_maskzeroed_double
+            cutout_gini = self._cutout_stamp_maskzeroed
 
         return cutout_gini
 
@@ -469,7 +483,7 @@ class SourceMorphology(object):
         """
         # Use the same region as in the Gini calculation
         image = np.where(self._segmap_gini, self._cutout_gini, 0.0)
-        image = np.float64(image)  # skimage wants this
+        image = np.float64(image)  # skimage wants double
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
@@ -548,21 +562,21 @@ class SourceMorphology(object):
         """
         Standard deviation of the background.
         """
-        return np.mean(self._cutout_stamp_maskzeroed_double[self._slice_skybox])
+        return np.mean(self._cutout_stamp_maskzeroed[self._slice_skybox])
 
     @lazyproperty
     def _sky_sigma(self):
         """
         Mean background value.
         """
-        return np.std(self._cutout_stamp_maskzeroed_double[self._slice_skybox])
+        return np.std(self._cutout_stamp_maskzeroed[self._slice_skybox])
 
     @lazyproperty
     def _sky_asymmetry(self):
         """
         Asymmetry of the background. Note the peculiar normalization.
         """
-        bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
+        bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         bkg_180 = bkg[::-1, ::-1]
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
 
@@ -571,7 +585,7 @@ class SourceMorphology(object):
         """
         Smoothness of the background. Note the peculiar normalization.
         """
-        bkg = self._cutout_stamp_maskzeroed_double[self._slice_skybox]
+        bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
 
         # If the smoothing "boxcar" is larger than the skybox itself,
         # this just sets all values equal to the mean:
@@ -662,7 +676,7 @@ class SourceMorphology(object):
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the (CAS) asymmetry.
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
 
         # Initial guess
         center_0 = np.array([self._xc_stamp, self._yc_stamp])
@@ -678,7 +692,7 @@ class SourceMorphology(object):
         """
         Calculate asymmetry as described in Lotz et al. (2004).
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._asymmetry_center,
                                         image, 'cas')
         
@@ -689,7 +703,7 @@ class SourceMorphology(object):
         """
         Calculate concentration as described in Lotz et al. (2004).
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
         r_max = self._petro_extent * self.petrosian_radius_circ
         
@@ -707,7 +721,7 @@ class SourceMorphology(object):
         r = self._petro_extent * self.petrosian_radius_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
 
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         
         boxcar_size = int(self._petro_fraction_cas * self.petrosian_radius_circ)
         image_smooth = ndi.uniform_filter(image, size=boxcar_size)
@@ -729,7 +743,7 @@ class SourceMorphology(object):
         the locations of pixels above `q` that are also part of
         the "main" clump.
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         sorted_pixelvals = self._sorted_pixelvals_stamp
 
         threshold = _quantile(sorted_pixelvals, q)
@@ -758,7 +772,7 @@ class SourceMorphology(object):
         pixels at the level of `q` (within the main clump) divided by
         the mean of pixels above `q` (within the main clump).
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         sorted_pixelvals = self._sorted_pixelvals_stamp
 
         locs_main_clump = self._segmap_mid_main_clump(q)
@@ -774,7 +788,7 @@ class SourceMorphology(object):
         automatically finds an upper limit for the quantile that
         determines the MID segmap.
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         sorted_pixelvals = self._sorted_pixelvals_stamp
 
         num_bright_pixels = 2  # starting point
@@ -797,7 +811,7 @@ class SourceMorphology(object):
         This implementation is independent of the number of quantiles
         used in the calculation, as well as other parameters.
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         sorted_pixelvals = self._sorted_pixelvals_stamp
 
         # Find appropriate quantile using numerical solver
@@ -821,7 +835,7 @@ class SourceMorphology(object):
         and set negative pixels to zero.
         """
         image = np.where(self._segmap_mid,
-                        self._cutout_stamp_maskzeroed_double, 0.0)
+                         self._cutout_stamp_maskzeroed, 0.0)
         image[image < 0] = 0.0
         return image
 
@@ -1024,12 +1038,14 @@ class SourceMorphology(object):
         Calculate the deviation (D) statistic as described in
         Peth et al. (2016).
         """
+        image = np.float64(self._cutout_mid)  # skimage wants double
+        
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
         xp = sorted_xpeak[0] + 0.5  # center of pixel
         yp = sorted_ypeak[0] + 0.5
         
         # Calculate centroid
-        m = skimage.measure.moments(self._cutout_mid, order=1)
+        m = skimage.measure.moments(image, order=1)
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
 
@@ -1042,7 +1058,7 @@ class SourceMorphology(object):
     ###################
 
     @lazyproperty
-    def _segmap_pawlik(self):
+    def _segmap_shape_asym(self):
         """
         Construct a binary detection mask as described in Section 3.1
         from Pawlik et al. (2016).
@@ -1054,7 +1070,7 @@ class SourceMorphology(object):
         based on the Petrosian radius.
         
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         mask = self._mask_stamp
         
         # Center at (center of) brightest pixel
@@ -1069,8 +1085,9 @@ class SourceMorphology(object):
         r_max = self._dist_to_closest_corner
         r_half_maximum = _radius_at_fraction_of_maximum(
             image, mask, r_max, self._annulus_width, 0.5)
-        r_in = 20.0 * r_half_maximum
-        r_out = 40.0 * r_half_maximum
+        r_in = self._sky_num_fwhm * r_half_maximum
+        r_out = 2.0 * self._sky_num_fwhm * r_half_maximum
+
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
@@ -1087,7 +1104,8 @@ class SourceMorphology(object):
         mode = 2.5*median - 1.5*mean
 
         # Smooth image slightly and apply 1-sigma threshold
-        image_smooth = ndi.uniform_filter(image, size=3.0)
+        image_smooth = ndi.uniform_filter(
+            image, size=self._boxcar_size_shape_asym)
         threshold = mode + std
         above_threshold = image_smooth >= threshold
 
@@ -1107,7 +1125,7 @@ class SourceMorphology(object):
         to the edge of the main source segment, as defined in
         Pawlik et al. (2016).
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
 
         # Center at (center of) brightest pixel
@@ -1119,7 +1137,7 @@ class SourceMorphology(object):
         distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
         
         # Only consider pixels within the segmap.
-        rmax = np.max(distances[self._segmap_pawlik])
+        rmax = np.max(distances[self._segmap_shape_asym])
 
         return rmax
 
@@ -1129,7 +1147,7 @@ class SourceMorphology(object):
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the outer asymmetry.
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         
         # Initial guess
         center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
@@ -1145,7 +1163,7 @@ class SourceMorphology(object):
         """
         Calculate outer asymmetry as described in Pawlik et al. (2016).
         """
-        image = self._cutout_stamp_maskzeroed_double
+        image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._outer_asymmetry_center,
                                         image, 'outer')
         
@@ -1157,7 +1175,7 @@ class SourceMorphology(object):
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the shape asymmetry.
         """
-        image = np.where(self._segmap_pawlik, 1.0, 0.0)
+        image = np.where(self._segmap_shape_asym, 1.0, 0.0)
 
         # Initial guess
         center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
@@ -1173,7 +1191,7 @@ class SourceMorphology(object):
         """
         Calculate shape asymmetry as described in Pawlik et al. (2016).
         """
-        image = np.where(self._segmap_pawlik, 1.0, 0.0)
+        image = np.where(self._segmap_shape_asym, 1.0, 0.0)
         asym = self._asymmetry_function(self._outer_asymmetry_center,
                                         image, 'shape')
 
@@ -1188,7 +1206,8 @@ def source_morphology(image, segmap, **kwargs):
     Parameters
     ----------
     image : array-like
-        The 2D image containing the sources of interest.
+        A 2D image containing the sources of interest.
+        The image must already be background-subtracted.
     segmap : array-like (int) or `photutils.SegmentationImage`
         A 2D segmentation map where different sources are 
         labeled with different positive integer values.
