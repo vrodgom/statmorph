@@ -10,5 +10,6 @@ plots/*
 *.prof
 
 # Other, custom
+*.sh
 *.txt
 test_*.py

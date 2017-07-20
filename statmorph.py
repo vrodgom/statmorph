@@ -37,6 +37,16 @@ def _mode(a):
     """
     return 2.5 * np.ma.median(a) - 1.5 * np.ma.mean(a)
 
+def _aperture_mean_nomask(ap, image, **kwargs):
+    """
+    Calculate the mean flux of an image for a given photutils
+    aperture object. Here we divide by the full area of the
+    aperture, regardless of masked and out-of-range pixels.
+    This avoids problems when the aperture is larger than the
+    region of interest.
+    """
+    return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
+
 def _fraction_of_total_function(r, image, center, fraction, total_sum):
     """
     Helper function to calculate ``_radius_at_fraction_of_total``.
@@ -69,8 +79,8 @@ def _fraction_of_maximum_function(r, image, mask, center, annulus_width, fractio
     r_out = r + 0.5 * annulus_width
 
     circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
-    circ_annulus_mean_flux = _aperture_mean(
-        circ_annulus, image, mask, method='exact')
+    circ_annulus_mean_flux = _aperture_mean_nomask(
+        circ_annulus, image, method='exact')
 
     return circ_annulus_mean_flux / max_flux - fraction
 
@@ -88,39 +98,6 @@ def _radius_at_fraction_of_maximum(image, mask, r_max, annulus_width, fraction):
 
     return r
 
-# The photutils aperture photometry functions *almost* do what I want,
-# but not quite, so unfortunately we need the following:
-
-def _aperture_area(ap, mask, **kwargs):
-    """
-    Calculate the area of a photutils aperture object,
-    excluding masked pixels.
-    """
-    return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
-
-def _aperture_mean(ap, image, mask, **kwargs):
-    """
-    Calculate the mean flux of an image for a given photutils
-    aperture object and a mask.
-    """
-    image2 = image.copy()  # because I don't trust Python sometimes
-    image2[mask] = 0.0
-    flux_sum = ap.do_photometry(image2, **kwargs)[0][0]
-
-    return flux_sum / _aperture_area(ap, mask, **kwargs)
-
-def _aperture_std(ap, image, mask, **kwargs):
-    """
-    Calculate the standard deviation of an image for a given
-    photutils aperture object and a mask.
-    """
-    sqr_diff = (image - _aperture_mean(ap, image, mask, **kwargs))**2
-    sqr_diff[mask] = 0.0
-    sqr_diff_sum = ap.do_photometry(sqr_diff, **kwargs)[0][0]
-
-    return np.sqrt(sqr_diff_sum / _aperture_area(ap, mask, **kwargs))
-
-# This is the main morphology class:
 
 class SourceMorphology(object):
     """
@@ -180,7 +157,7 @@ class SourceMorphology(object):
     skybox_size : scalar, optional
         The size in pixels of the (square) "skybox" used to measure
         properties of the image background. The default is 20 pixels.
-    petro_extent : float, optional
+    petro_extent_circ : float, optional
         The radius of the circular aperture used for the asymmetry
         calculation, in units of the circular Petrosian radius. The
         default value is 1.5.
@@ -199,11 +176,10 @@ class SourceMorphology(object):
     sigma_mid : float, optional
         In the MID calculations, this is the smoothing scale (in pixels)
         used to compute the intensity (I) statistic. The default is 1.0.
-    sky_num_fwhm : scalar, optional
-        When calculating the shape asymmetry segmap, it is assumed that
-        a circular annulus with inner and outer *diameter* equal to
-        ``num_fwhm`` and 2*``num_fwhm`` times the FWHM of the galaxy
-        profile is representative of the background. The default is 20.
+    petro_extent_ellip : float, optional
+        The inner radius, in units of the Petrosian "radius", of the
+        elliptical aperture used to estimate the sky background in the
+        shape asymmetry calculation. The default value is 1.5.
     boxcar_size_shape_asym : float, optional
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
@@ -218,9 +194,9 @@ class SourceMorphology(object):
                  cutout_extent=2.0, annulus_width=1.0, eta=0.2,
                  petro_fraction_gini=0.2, remove_outliers=False,
                  n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent=1.5, petro_fraction_cas=0.25,
+                 petro_extent_circ=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=100, sigma_mid=1.0,
-                 sky_num_fwhm=20.0, boxcar_size_shape_asym=3.0):
+                 petro_extent_ellip=1.5, boxcar_size_shape_asym=3.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._annulus_width = annulus_width
@@ -230,12 +206,12 @@ class SourceMorphology(object):
         self._n_sigma_outlier = n_sigma_outlier
         self._border_size = border_size
         self._skybox_size = skybox_size
-        self._petro_extent = petro_extent
+        self._petro_extent_circ = petro_extent_circ
         self._petro_fraction_cas = petro_fraction_cas
         self._boxcar_size_mid = boxcar_size_mid
         self._niter_bh_mid = niter_bh_mid
         self._sigma_mid = sigma_mid
-        self._sky_num_fwhm = sky_num_fwhm
+        self._petro_extent_ellip = petro_extent_ellip
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
 
         # The following object stores some important data:
@@ -314,13 +290,14 @@ class SourceMorphology(object):
     def _dist_to_closest_corner(self):
         """
         The distance from the centroid to the closest corner of the
-        minimal bounding box containing the source. This is used as an
-        upper limit when computing the Petrosian radius.
+        original image. This is used as an upper limit when computing
+        the Petrosian radius.
         """
-        x_dist = min(self._props.xmax.value - self._props.xcentroid.value,
-                     self._props.xcentroid.value - self._props.xmin.value)
-        y_dist = min(self._props.ymax.value - self._props.ycentroid.value,
-                     self._props.ycentroid.value - self._props.ymin.value)
+        ny, nx = self._props._data.shape
+        yc, xc = self._props.ycentroid.value, self._props.xcentroid.value
+        x_dist = min(xc, nx-xc)
+        y_dist = min(yc, ny-yc)
+
         return np.sqrt(x_dist**2 + y_dist**2)
 
     def _petrosian_function_ellip(self, a):
@@ -345,12 +322,10 @@ class SourceMorphology(object):
         ellip_aperture = photutils.EllipticalAperture(
             (self._xc_stamp, self._yc_stamp), a, b, theta)
 
-        ellip_annulus_mean_flux = _aperture_mean(
-            ellip_annulus, self._cutout_stamp_maskzeroed,
-            self._mask_stamp, method='exact')
-        ellip_aperture_mean_flux = _aperture_mean(
-            ellip_aperture, self._cutout_stamp_maskzeroed,
-            self._mask_stamp, method='exact')
+        ellip_annulus_mean_flux = _aperture_mean_nomask(
+            ellip_annulus, self._cutout_stamp_maskzeroed, method='exact')
+        ellip_aperture_mean_flux = _aperture_mean_nomask(
+            ellip_aperture, self._cutout_stamp_maskzeroed, method='exact')
 
         return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
 
@@ -372,12 +347,10 @@ class SourceMorphology(object):
         circ_aperture = photutils.CircularAperture(
             (self._xc_stamp, self._yc_stamp), r)
 
-        circ_annulus_mean_flux = _aperture_mean(
-            circ_annulus, self._cutout_stamp_maskzeroed,
-            self._mask_stamp, method='exact')
-        circ_aperture_mean_flux = _aperture_mean(
-            circ_aperture, self._cutout_stamp_maskzeroed,
-            self._mask_stamp, method='exact')
+        circ_annulus_mean_flux = _aperture_mean_nomask(
+            circ_annulus, self._cutout_stamp_maskzeroed, method='exact')
+        circ_aperture_mean_flux = _aperture_mean_nomask(
+            circ_aperture, self._cutout_stamp_maskzeroed, method='exact')
 
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
@@ -458,8 +431,8 @@ class SourceMorphology(object):
         theta = self._props.orientation.value
         ellip_annulus = photutils.EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
-        ellip_annulus_mean_flux = _aperture_mean(
-            ellip_annulus, cutout_smooth, self._mask_stamp, method='exact')
+        ellip_annulus_mean_flux = _aperture_mean_nomask(
+            ellip_annulus, cutout_smooth, method='exact')
         
         return cutout_smooth >= ellip_annulus_mean_flux
 
@@ -651,7 +624,7 @@ class SourceMorphology(object):
 
         # Note that aperture is defined for the new coordinates
         if kind == 'cas':
-            r = self._petro_extent * self.petrosian_radius_circ
+            r = self._petro_extent_circ * self.petrosian_radius_circ
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
             r_in = self.half_light_radius
@@ -709,7 +682,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
-        r_max = self._petro_extent * self.petrosian_radius_circ
+        r_max = self._petro_extent_circ * self.petrosian_radius_circ
         
         r_20 = _radius_at_fraction_of_total(image, center, r_max, 0.2)
         r_80 = _radius_at_fraction_of_total(image, center, r_max, 0.8)
@@ -722,7 +695,7 @@ class SourceMorphology(object):
         Calculate smoothness (a.k.a. clumpiness) as described in
         Lotz et al. (2004).
         """
-        r = self._petro_extent * self.petrosian_radius_circ
+        r = self._petro_extent_circ * self.petrosian_radius_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
 
         image = self._cutout_stamp_maskzeroed
@@ -1080,7 +1053,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         mask = self._mask_stamp
-        r_max = self._dist_to_closest_corner
+        r_max = self._dist_to_closest_corner  # just an upper bound
         r_half_max = _radius_at_fraction_of_maximum(
             image, mask, r_max, self._annulus_width, 0.5)
         
@@ -1094,10 +1067,14 @@ class SourceMorphology(object):
         
         Notes
         -----
-        The algorithm seems to require a lot of sky area around the
-        source of interest. In some cases we fall back to boundaries
-        based on the Petrosian radius.
-        
+        The original algorithm assumes that a circular aperture with
+        inner and outer radii equal to 20 and 40 times the FWHM is
+        representative of the background. In order to avoid amplifying
+        uncertainties from the central regions of the galaxy profile,
+        we assume that such an aperture has inner and outer radii
+        equal to 1.5 and 3.0 times the elliptical Petrosian "radius"
+        (this can be changed by the user).
+
         """
         image = self._cutout_stamp_maskzeroed
         
@@ -1107,11 +1084,9 @@ class SourceMorphology(object):
         ic, jc = int(yc), int(xc)
 
         # Create a circular annulus around the brightest pixel
-        # with inner and outer radii equal to 20 and 40 times
-        # the *radius* at half-maximum (because 20 and 40 times
-        # the FWHM seems like too much!).
-        r_in = self._sky_num_fwhm * self.radius_at_half_max
-        r_out = 2.0 * self._sky_num_fwhm * self.radius_at_half_max
+        # that only contains background sky (hopefully).
+        r_in = self._petro_extent_ellip * self.petrosian_radius_ellip
+        r_out = 2.0 * self._petro_extent_ellip * self.petrosian_radius_ellip
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
