@@ -37,10 +37,18 @@ def _mode(a):
     """
     return 2.5 * np.ma.median(a) - 1.5 * np.ma.mean(a)
 
+def _aperture_area(ap, mask, **kwargs):
+    """
+    Calculate the area of a photutils aperture object,
+    excluding masked pixels.
+    """
+    return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
+
 def _aperture_mean_nomask(ap, image, **kwargs):
     """
     Calculate the mean flux of an image for a given photutils
-    aperture object. Here we divide by the full area of the
+    aperture object. Note that we do not use ``_aperture_area``
+    here. Instead, we divide by the full area of the
     aperture, regardless of masked and out-of-range pixels.
     This avoids problems when the aperture is larger than the
     region of interest.
@@ -309,6 +317,12 @@ class SourceMorphology(object):
         divided by the mean flux within the ellipse,
         minus "eta" (eq. 4 from Lotz et al. 2004). The root of
         this function is the Petrosian "radius".
+        
+        Notes
+        -----
+        The original IDL implementation uses the center of asymmetry
+        for this calculation. Here we use the centroid.
+
         """
         b = a / self._props.elongation.value
         a_in = a - 0.5 * self._annulus_width
@@ -338,6 +352,12 @@ class SourceMorphology(object):
         annulus divided by the mean flux within the circle,
         minus "eta" (eq. 4 from Lotz et al. 2004). The root of
         this function is the Petrosian radius.
+
+        Notes
+        -----
+        The original IDL implementation uses the center of asymmetry
+        for this calculation. Here we use the centroid.
+
         """
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
@@ -359,9 +379,37 @@ class SourceMorphology(object):
         """
         Compute the Petrosian "radius" (actually the semi-major axis)
         for concentric elliptical apertures.
+        
+        Notes
+        -----
+        The so-called "curve of growth" is not always monotonic,
+        e.g., when there is a bright, unlabeled and unmasked
+        secondary source in the image, so we cannot just apply a
+        root-finding algorithm over the full interval.
+        Instead, we proceed in two stages: first we do a coarse,
+        brute-force search for an appropriate interval (that
+        contains the root), and then we apply the root-finder.
+
         """
-        a_min = self._annulus_width
-        a_max = self._dist_to_closest_corner
+        # Find appropriate range for root search
+        da = self._dist_to_closest_corner / 100.0  # step size
+        a = self._annulus_width  # initial value
+        while True:
+            if a > self._dist_to_closest_corner:
+                raise Exception('rpet_ellip not found within range.')
+            curval = self._petrosian_function_ellip(a)
+            if curval == 0:
+                print('Warning: we found rpet_ellip by pure chance!')
+                return a
+            elif curval > 0:
+                a_min = a
+            elif curval < 0:
+                a_max = a
+                break
+            a += da
+        assert(a_min < a_max)
+
+        # Find root (interpolation would probably work, too)
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
                                   a_min, a_max, xtol=1e-6)
         
@@ -371,9 +419,36 @@ class SourceMorphology(object):
     def petrosian_radius_circ(self):
         """
         Compute the Petrosian radius for concentric circular apertures.
+
+        Notes
+        -----
+        The so-called "curve of growth" is not always monotonic,
+        e.g., when there is a bright, unlabeled and unmasked
+        secondary source in the image, so we cannot just apply a
+        root-finding algorithm over the full interval.
+        Instead, we proceed in two stages: first we do a coarse,
+        brute-force search for an appropriate interval (that
+        contains the root), and then we apply the root-finder.
+
         """
-        r_min = self._annulus_width
-        r_max = self._dist_to_closest_corner
+        # Find appropriate range for root search
+        dr = self._dist_to_closest_corner / 100.0  # step size
+        r = self._annulus_width  # initial value
+        while True:
+            if r > self._dist_to_closest_corner:
+                raise Exception('rpet_circ not found within range.')
+            curval = self._petrosian_function_circ(r)
+            if curval == 0:
+                print('Warning: we found rpet_circ by pure chance!')
+                return r
+            elif curval > 0:
+                r_min = r
+            elif curval < 0:
+                r_max = r
+                break
+            r += dr
+        assert(r_min < r_max)
+
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, xtol=1e-6)
 
@@ -658,11 +733,10 @@ class SourceMorphology(object):
         # Initial guess
         center_0 = np.array([self._xc_stamp, self._yc_stamp])
         
-        # Find minimum at pixel precision (xtol=1)
         center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'cas'), xtol=1.0, disp=0)
+                               args=(image, 'cas'), xtol=1e-6, disp=0)
 
-        return np.floor(center_asym)
+        return center_asym
 
     @lazyproperty
     def asymmetry(self):
@@ -716,8 +790,8 @@ class SourceMorphology(object):
 
     def _segmap_mid_main_clump(self, q):
         """
-        For a given quantile `q`, return a boolean array indicating
-        the locations of pixels above `q` that are also part of
+        For a given quantile ``q``, return a boolean array indicating
+        the locations of pixels above ``q`` that are also part of
         the "main" clump.
         """
         image = self._cutout_stamp_maskzeroed
@@ -726,10 +800,15 @@ class SourceMorphology(object):
         threshold = _quantile(sorted_pixelvals, q)
         above_threshold = image >= threshold
 
+        #~ # Instead of assuming that the main segment is at the center
+        #~ # of the stamp, we use the already-calculated centroid:
+        #~ ic = int(self._yc_stamp)
+        #~ jc = int(self._xc_stamp)
+
         # Instead of assuming that the main segment is at the center
-        # of the stamp, we use the already-calculated centroid:
-        ic = int(self._yc_stamp)
-        jc = int(self._xc_stamp)
+        # of the stamp, use the position of the brightest pixel:
+        ic = int(self._y_maxval_stamp)
+        jc = int(self._x_maxval_stamp)
 
         # Neighbor "footprint" for growing regions, including corners:
         s = ndi.generate_binary_structure(2, 2)
@@ -745,18 +824,22 @@ class SourceMorphology(object):
         """
         Helper function to calculate the MID segmap.
         
-        For a given quantile `q`, return the ratio of the mean flux of
-        pixels at the level of `q` (within the main clump) divided by
-        the mean of pixels above `q` (within the main clump).
+        For a given quantile ``q``, return the ratio of the mean flux of
+        pixels at the level of ``q`` (within the main clump) divided by
+        the mean of pixels above ``q`` (within the main clump).
         """
         image = self._cutout_stamp_maskzeroed
         sorted_pixelvals = self._sorted_pixelvals_stamp
 
         locs_main_clump = self._segmap_mid_main_clump(q)
-        mean_flux_main_clump = np.mean(image[locs_main_clump])
-        mean_flux_new_pixels = _quantile(sorted_pixelvals, q)
+        if locs_main_clump is None:
+            ratio = 1.0
+        else:
+            mean_flux_main_clump = np.mean(image[locs_main_clump])
+            mean_flux_new_pixels = _quantile(sorted_pixelvals, q)
+            ratio = mean_flux_new_pixels / mean_flux_main_clump
 
-        return mean_flux_new_pixels / mean_flux_main_clump - self._eta
+        return ratio - self._eta
 
     @lazyproperty
     def _segmap_mid_upper_bound(self):
@@ -826,7 +909,7 @@ class SourceMorphology(object):
     def _multimode_function(self, q):
         """
         Helper function to calculate the multimode statistic.
-        Returns the sorted "areas" of the clumps at quantile `q`.
+        Returns the sorted "areas" of the clumps at quantile ``q``.
         """
         threshold = _quantile(self._sorted_pixelvals_mid, q)
         above_threshold = self._cutout_mid >= threshold
@@ -1151,11 +1234,10 @@ class SourceMorphology(object):
         # Initial guess
         center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
-        # Find minimum at pixel precision (xtol=1)
         center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'outer'), xtol=1.0, disp=0)
+                               args=(image, 'outer'), xtol=1e-6, disp=0)
 
-        return np.floor(center_asym)
+        return center_asym
 
     @lazyproperty
     def outer_asymmetry(self):
@@ -1181,9 +1263,9 @@ class SourceMorphology(object):
         
         # Find minimum at pixel precision (xtol=1)
         center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'shape'), xtol=1.0, disp=0)
+                               args=(image, 'shape'), xtol=1e-6, disp=0)
 
-        return np.floor(center_asym)
+        return center_asym
 
     @lazyproperty
     def shape_asymmetry(self):
