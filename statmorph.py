@@ -508,8 +508,19 @@ class SourceMorphology(object):
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, cutout_smooth, method='exact')
-        
-        return cutout_smooth >= ellip_annulus_mean_flux
+
+        above_threshold = cutout_smooth >= ellip_annulus_mean_flux
+
+        # 8-connected neighbor "footprint" for growing regions:
+        s = ndi.generate_binary_structure(2, 2)
+
+        # Only keep region that contains centroid
+        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
+        labeled_array, num_features = ndi.label(above_threshold, structure=s)
+        if labeled_array[ic, jc] == 0:
+            raise Exception('Centroid is outside the main segment?')
+
+        return labeled_array == labeled_array[ic, jc]
 
     @lazyproperty
     def gini(self):
