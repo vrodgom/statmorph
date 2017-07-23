@@ -79,33 +79,6 @@ def _radius_at_fraction_of_total(image, center, r_max, fraction):
 
     return r
 
-def _fraction_of_maximum_function(r, image, mask, center, annulus_width, fraction, max_flux):
-    """
-    Helper function to calculate ``_radius_at_fraction_of_maximum``.
-    """
-    r_in = r - 0.5 * annulus_width
-    r_out = r + 0.5 * annulus_width
-
-    circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
-    circ_annulus_mean_flux = _aperture_mean_nomask(
-        circ_annulus, image, method='exact')
-
-    return circ_annulus_mean_flux / max_flux - fraction
-
-def _radius_at_fraction_of_maximum(image, mask, r_max, annulus_width, fraction):
-    """
-    Return the radius at which the mean flux is a given
-    fraction of the maximum.
-    """
-    r_min = 1.0
-    max_flux = np.max(image)
-    yc, xc = np.argwhere(image == max_flux)[0]
-    center = np.array([xc, yc]) + 0.5
-    r = opt.brentq(_fraction_of_maximum_function, r_min, r_max, xtol=1e-6,
-                   args=(image, mask, center, annulus_width, fraction, max_flux))
-
-    return r
-
 
 class SourceMorphology(object):
     """
@@ -1139,19 +1112,6 @@ class SourceMorphology(object):
         center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
         return _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
-
-    @lazyproperty
-    def radius_at_half_max(self):
-        """
-        The radius at half-maximum (half of the FWHM).
-        """
-        image = self._cutout_stamp_maskzeroed
-        mask = self._mask_stamp
-        r_max = self._dist_to_closest_corner  # just an upper bound
-        r_half_max = _radius_at_fraction_of_maximum(
-            image, mask, r_max, self._annulus_width, 0.5)
-        
-        return r_half_max
 
     @lazyproperty
     def _segmap_shape_asym(self):

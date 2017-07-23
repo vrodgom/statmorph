@@ -65,7 +65,6 @@ properties of the first labeled source.
         'intensity',
         'deviation',
         'half_light_radius',
-        'radius_at_half_max',
         'rmax',
         'outer_asymmetry',
         'shape_asymmetry',
@@ -95,7 +94,6 @@ For Pan-STARRS galaxy *J235958.6+281704* in the g-band, this returns:
                 intensity:   0.018720    (Time:  0.125747 s)
                 deviation:   0.018686    (Time:  0.003108 s)
         half_light_radius:  25.610659    (Time:  0.286685 s)
-       radius_at_half_max:   6.511995    (Time:  0.000006 s)
                      rmax: 119.067208    (Time:  0.000003 s)
           outer_asymmetry:   0.191133    (Time:  0.170721 s)
           shape_asymmetry:   0.198903    (Time:  0.004484 s)
