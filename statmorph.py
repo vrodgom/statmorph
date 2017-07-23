@@ -107,6 +107,17 @@ class SourceMorphology(object):
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
         must be >= 1. The default value is 2.0 (i.e., 2 times larger).
+    remove_outliers : bool, optional
+        If ``True``, remove outlying pixels as described in Lotz et al.
+        (2004), using the parameter ``n_sigma_outlier``. In the current
+        implementation, this operation is quite time-consuming.
+        By default it is set to ``False``, which should be fine for
+        reasonably clean data.
+    n_sigma_outlier : scalar, optional
+        The number of standard deviations that define a pixel as an
+        outlier, relative to its 8 neighbors. This parameter only
+        takes effect when ``remove_outliers`` is ``True``. The default
+        value is 10.
     annulus_width : float, optional
         The width (in pixels) of the annuli used to calculate the
         Petrosian radius and other quantities. The default value is 1.0.
@@ -120,17 +131,6 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
-    remove_outliers : bool, optional
-        If ``True``, remove outlying pixels as described in Lotz et al.
-        (2004), using the parameter ``n_sigma_outlier``. This is the
-        most time-consuming operation and, at least for reasonably
-        clean data, it should have a negligible effect on Gini
-        coefficient. By default it is set to ``False``.
-    n_sigma_outlier : scalar, optional
-        The number of standard deviations that define a pixel as an
-        outlier, relative to its 8 neighbors. This parameter only
-        takes effect when ``remove_outliers`` is ``True``. The default
-        value is 10.
     border_size : scalar, optional
         The number of pixels that are skipped from each border of the
         "postage stamp" image cutout when finding the skybox. The
@@ -172,12 +172,12 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=2.0, annulus_width=1.0, eta=0.2,
-                 petro_fraction_gini=0.2, remove_outliers=False,
-                 n_sigma_outlier=10, border_size=5, skybox_size=20,
-                 petro_extent_circ=1.5, petro_fraction_cas=0.25,
-                 boxcar_size_mid=3.0, niter_bh_mid=100, sigma_mid=1.0,
-                 petro_extent_ellip=1.5, boxcar_size_shape_asym=3.0):
+                 cutout_extent=2.0, remove_outliers=False, n_sigma_outlier=10,
+                 annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
+                 border_size=5, skybox_size=20, petro_extent_circ=1.5,
+                 petro_fraction_cas=0.25, boxcar_size_mid=3.0,
+                 niter_bh_mid=100, sigma_mid=1.0, petro_extent_ellip=1.5,
+                 boxcar_size_shape_asym=3.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._annulus_width = annulus_width
@@ -254,9 +254,31 @@ class SourceMorphology(object):
         by ``_slice_stamp``. Pixels belonging to other sources
         (as well as pixels where ``mask`` == 1) are set to zero,
         but the background is left alone.
+        
+        Optionally, outliers (bad pixels) are also removed here,
+        as described in Lotz et al. (2004).
+
         """
         cutout_stamp = self._props._data[self._slice_stamp]
-        cutout_stamp[self._mask_stamp] = 0
+        cutout_stamp[self._mask_stamp] = 0.0
+
+        if self._remove_outliers:
+            start = time.time()
+            print('Removing outliers...')
+            local_footprint = np.array([  # exclude central pixel
+                [1, 1, 1],
+                [1, 0, 1],
+                [1, 1, 1],
+            ])
+            local_mean = ndi.filters.generic_filter(
+                cutout_stamp, np.mean, footprint=local_footprint)
+            local_std = ndi.filters.generic_filter(
+                cutout_stamp, np.std, footprint=local_footprint)
+            bad_pixels = (np.abs(cutout_stamp - local_mean) >
+                          self._n_sigma_outlier * local_std)
+            cutout_stamp[bad_pixels] = 0.0
+            print('There are %d bad pixels.' % (np.sum(bad_pixels)))
+            print('It took', time.time() - start, 's to remove them.\n')
 
         return cutout_stamp
 
@@ -432,37 +454,6 @@ class SourceMorphology(object):
     #######################
 
     @lazyproperty
-    def _cutout_gini(self):
-        """
-        Remove outliers as described in Lotz et al. (2004).
-        """
-        if self._remove_outliers:
-            # For performance checks
-            start = time.time()
-
-            # Exclude the center pixel from calculations
-            local_footprint = np.array([
-                [1, 1, 1],
-                [1, 0, 1],
-                [1, 1, 1],
-            ])
-            local_mean = ndi.filters.generic_filter(
-                self._cutout_stamp_maskzeroed, np.mean, footprint=local_footprint)
-            local_std = ndi.filters.generic_filter(
-                self._cutout_stamp_maskzeroed, np.std, footprint=local_footprint)
-            bad_pixels = (np.abs(self._cutout_stamp_maskzeroed - local_mean) >
-                          self._n_sigma_outlier * local_std)
-            cutout_gini = np.where(~bad_pixels, self._cutout_stamp_maskzeroed, 0)
-            
-            print('There are %d bad pixels.' % (np.sum(bad_pixels)))
-            print('It took', time.time() - start, 's to remove them.')
-
-        else:
-            cutout_gini = self._cutout_stamp_maskzeroed
-
-        return cutout_gini
-
-    @lazyproperty
     def _segmap_gini(self):
         """
         Create a new segmentation map (relative to the "Gini" cutout)
@@ -470,7 +461,7 @@ class SourceMorphology(object):
         """
         # Smooth image
         petro_sigma = self._petro_fraction_gini * self.petrosian_radius_ellip
-        cutout_smooth = ndi.gaussian_filter(self._cutout_gini, petro_sigma)
+        cutout_smooth = ndi.gaussian_filter(self._cutout_stamp_maskzeroed, petro_sigma)
 
         # Use mean flux at the Petrosian "radius" as threshold
         a_in = self.petrosian_radius_ellip - 0.5 * self._annulus_width
@@ -500,7 +491,7 @@ class SourceMorphology(object):
         """
         Calculate the Gini coefficient as described in Lotz et al. (2004).
         """
-        image = self._cutout_gini.flatten()
+        image = self._cutout_stamp_maskzeroed.flatten()
         segmap = self._segmap_gini.flatten()
 
         sorted_pixelvals = np.sort(np.abs(image[segmap]))
@@ -518,7 +509,7 @@ class SourceMorphology(object):
         Calculate the M_20 coefficient as described in Lotz et al. (2004).
         """
         # Use the same region as in the Gini calculation
-        image = np.where(self._segmap_gini, self._cutout_gini, 0.0)
+        image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
 
         # Calculate centroid
@@ -550,7 +541,7 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
-        image = self._cutout_gini
+        image = self._cutout_stamp_maskzeroed
         locs = self._segmap_gini & (image >= 0)
         pixelvals = image[locs]
         if self._variance is None:
