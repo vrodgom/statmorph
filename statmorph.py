@@ -475,14 +475,18 @@ class SourceMorphology(object):
 
         above_threshold = cutout_smooth >= ellip_annulus_mean_flux
 
-        # 8-connected neighbor "footprint" for growing regions:
+        # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
-
-        # Only keep region that contains centroid
-        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
+
+        # Here we diverge a bit from the IDL implementation, which
+        # activates a "bad measurement" flag when there is more than
+        # one feature in the labeled array. Instead, we simply keep the
+        # segment that contains the brightest pixel.
+        ic = int(self._y_maxval_stamp)
+        jc = int(self._x_maxval_stamp)
         if labeled_array[ic, jc] == 0:
-            raise Exception('Centroid is outside the main segment?')
+            raise Exception('Brightest pixel is outside the main segment?')
 
         return labeled_array == labeled_array[ic, jc]
 
@@ -775,11 +779,6 @@ class SourceMorphology(object):
         threshold = _quantile(sorted_pixelvals, q)
         above_threshold = image >= threshold
 
-        #~ # Instead of assuming that the main segment is at the center
-        #~ # of the stamp, we use the already-calculated centroid:
-        #~ ic = int(self._yc_stamp)
-        #~ jc = int(self._xc_stamp)
-
         # Instead of assuming that the main segment is at the center
         # of the stamp, use the position of the brightest pixel:
         ic = int(self._y_maxval_stamp)
@@ -973,12 +972,12 @@ class SourceMorphology(object):
             ratio_min = ratio_array[k_min]
             if ratio_min < 0:  # valid "ratios" should be negative
                 break
-            elif mid_stepsize < 1.0 / self._cutout_mid.size:
-                print('Warning: Single clump! (This should be rare.)')
+            elif mid_stepsize < 1e-3:
+                print('[M statistic] Warning: Single clump! (Probable artifact.)')
                 return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
-                print('Warning: Reduced stepsize to %g.' % (mid_stepsize))
+                print('[M statistic] Warning: Reduced stepsize to %g.' % (mid_stepsize))
 
         # STAGE 2: basin-hopping method
 
