@@ -787,7 +787,7 @@ class SourceMorphology(object):
 
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
         if labeled_array[ic, jc] == 0:
-            # Centroid is not part of the main clump.
+            # Brightest pixel is not part of the main clump.
             return None
 
         return labeled_array == labeled_array[ic, jc]
@@ -858,7 +858,17 @@ class SourceMorphology(object):
             np.float64(locs_main_clump), size=self._boxcar_size_mid)
         segmap = segmap_float > 0.5
 
-        return segmap
+        # Grow regions with 8-connected neighbor "footprint"
+        s = ndi.generate_binary_structure(2, 2)
+        labeled_array, num_features = ndi.label(segmap, structure=s)
+
+        # Only keep segment that contains the brightest pixel.
+        ic = int(self._y_maxval_stamp)
+        jc = int(self._x_maxval_stamp)
+        if labeled_array[ic, jc] == 0:
+            raise Exception('Brightest pixel is outside the main segment?')
+
+        return labeled_array == labeled_array[ic, jc]
 
     @lazyproperty
     def _cutout_mid(self):
@@ -1010,10 +1020,9 @@ class SourceMorphology(object):
         This replaces the "i_clump" routine from the original IDL code.
         The main difference is that we do not place a limit on the
         number of labeled regions (previously limited to 100 regions).
-        This is also much faster, thanks to the "peak_local_max" and
-        "watershed" skimage routines.
+        This is also much faster, thanks to the highly optimized
+        "peak_local_max" and "watershed" skimage routines.
         Returns a labeled array indicating regions around local maxima.
-        
         """
         peaks = skimage.feature.peak_local_max(
             self._cutout_mid_smooth, indices=True, num_peaks=np.inf)
