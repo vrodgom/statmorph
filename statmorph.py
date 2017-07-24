@@ -259,8 +259,8 @@ class SourceMorphology(object):
         as described in Lotz et al. (2004).
 
         """
-        cutout_stamp = self._props._data[self._slice_stamp]
-        cutout_stamp[self._mask_stamp] = 0.0
+        cutout_stamp = np.where(~self._mask_stamp,
+                                self._props._data[self._slice_stamp], 0.0)
 
         if self._remove_outliers:
             start = time.time()
@@ -545,16 +545,14 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
-        image = self._cutout_stamp_maskzeroed
-        locs = self._segmap_gini & (image >= 0)
-        pixelvals = image[locs]
+        locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
+        pixelvals = self._cutout_stamp_maskzeroed[locs]
         if self._variance is None:
             variance = np.zeros_like(pixelvals)
         else:
             variance = self._variance[self._slice_stamp]
 
-        return np.mean(image[locs] / np.sqrt(variance[locs] +
-                                             self._sky_sigma**2))
+        return np.mean(pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
 
     ##################
     # CAS statistics #
@@ -1120,7 +1118,7 @@ class SourceMorphology(object):
         (this can be changed by the user).
 
         """
-        image = self._cutout_stamp_maskzeroed
+        ny, nx = self._cutout_stamp_maskzeroed.shape
         
         # Center at (center of) brightest pixel
         xc = self._x_maxval_stamp + 0.5
@@ -1135,21 +1133,29 @@ class SourceMorphology(object):
 
         # Convert circular annulus aperture to binary mask
         circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
-        # With the same shape as ``image``
-        circ_annulus_mask = circ_annulus_mask.to_image(image.shape)
+        # With the same shape as the postage stamp
+        circ_annulus_mask = circ_annulus_mask.to_image((ny, nx))
         # Invert mask and exclude other sources
         total_mask = self._mask_stamp | np.logical_not(circ_annulus_mask)
         # Do sigma-clipping -- 5 iterations should be enough
         mean, median, std = sigma_clipped_stats(
-            image, mask=total_mask, sigma=3.0, iters=5, cenfunc=_mode)
+            self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0, iters=5,
+            cenfunc=_mode)
 
         # Mode as defined in Bertin & Arnouts (1996)
         mode = 2.5*median - 1.5*mean
+        threshold = mode + std
+
+        # It seems that a stellar mask does more harm than good
+        # when calculating the shape asymmetry. Therefore, once we
+        # have estimated the threshold w.r.t. the background, we
+        # apply it to the postage stamp *without* masking stars
+        # or other sources.
+        image_nomask = self._props._data[self._slice_stamp]
 
         # Smooth image slightly and apply 1-sigma threshold
         image_smooth = ndi.uniform_filter(
-            image, size=self._boxcar_size_shape_asym)
-        threshold = mode + std
+            image_nomask, size=self._boxcar_size_shape_asym)
         above_threshold = image_smooth >= threshold
 
         # 8-connected neighbor "footprint" for growing regions:
@@ -1234,7 +1240,7 @@ class SourceMorphology(object):
         Calculate shape asymmetry as described in Pawlik et al. (2016).
         """
         image = np.where(self._segmap_shape_asym, 1.0, 0.0)
-        asym = self._asymmetry_function(self._outer_asymmetry_center,
+        asym = self._asymmetry_function(self._shape_asymmetry_center,
                                         image, 'shape')
 
         return asym
