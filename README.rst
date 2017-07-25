@@ -58,6 +58,7 @@ properties of the first labeled source.
         'gini',
         'm20',
         'sn_per_pixel',
+        'flag',
         'asymmetry',
         'concentration',
         'smoothness',
@@ -87,6 +88,7 @@ For Pan-STARRS galaxy *J235958.6+281704* in the g-band, this returns:
                      gini:   0.574485    (Time:  0.137494 s)
                       m20:  -1.955428    (Time:  0.027181 s)
              sn_per_pixel:   3.981467    (Time:  0.001153 s)
+                     flag:   0.000000    (Time:  0.000004 s)
                 asymmetry:   0.147330    (Time:  0.100315 s)
             concentration:   3.203761    (Time:  0.008073 s)
                smoothness:   0.079198    (Time:  0.009048 s)

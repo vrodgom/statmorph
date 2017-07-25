@@ -198,6 +198,9 @@ class SourceMorphology(object):
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
+        # This attempts to flag bad measurements:
+        self.flag = 0
+
         # Centroid of the source relative to the "postage stamp" cutout:
         self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
         self._yc_stamp = self._props.ycentroid.value - self._slice_stamp[0].start
@@ -481,9 +484,11 @@ class SourceMorphology(object):
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
 
-        # Here we diverge a bit from the IDL implementation, which
-        # activates a "bad measurement" flag when there is more than
-        # one feature in the labeled array. Instead, we simply keep the
+        # If more than one region, activate the "bad measurement" flag:
+        if num_features > 1:
+            self.flag = 1
+
+        # Regardless of the "bad measurement" flag, we always keep the
         # segment that contains the brightest pixel.
         ic = int(self._y_maxval_stamp)
         jc = int(self._x_maxval_stamp)
