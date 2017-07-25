@@ -389,10 +389,10 @@ class SourceMorphology(object):
         contains the root), and then we apply the root-finder.
 
         """
-        # Find appropriate range for root search
+        # Find appropriate range for root finder
         da = self._dist_to_closest_corner / 100.0  # step size
-        a_min = self._annulus_width
-        a = a_min  # initial value
+        a = self._annulus_width  # initial value
+        a_min, a_max = None, None
         while True:
             a += da
             if a > self._dist_to_closest_corner:
@@ -404,11 +404,10 @@ class SourceMorphology(object):
             elif curval > 0:
                 a_min = a
             elif curval < 0:
-                a_max = a
-                break
-        assert(a_min < a_max)
+                if a_min is not None:
+                    a_max = a
+                    break
 
-        # Find root (interpolation would probably work, too)
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
                                   a_min, a_max, xtol=1e-6)
         
@@ -430,10 +429,10 @@ class SourceMorphology(object):
         contains the root), and then we apply the root-finder.
 
         """
-        # Find appropriate range for root search
+        # Find appropriate range for root finder
         dr = self._dist_to_closest_corner / 100.0  # step size
-        r_min = self._annulus_width
-        r = r_min  # initial value
+        r = self._annulus_width  # initial value
+        r_min, r_max = None, None
         while True:
             r += dr
             if r > self._dist_to_closest_corner:
@@ -445,9 +444,9 @@ class SourceMorphology(object):
             elif curval > 0:
                 r_min = r
             elif curval < 0:
-                r_max = r
-                break
-        assert(r_min < r_max)
+                if r_min is not None:
+                    r_max = r
+                    break
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, xtol=1e-6)
