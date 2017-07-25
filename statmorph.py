@@ -388,8 +388,10 @@ class SourceMorphology(object):
         """
         # Find appropriate range for root search
         da = self._dist_to_closest_corner / 100.0  # step size
-        a = self._annulus_width  # initial value
+        a_min = self._annulus_width
+        a = a_min  # initial value
         while True:
+            a += da
             if a > self._dist_to_closest_corner:
                 raise Exception('rpet_ellip not found within range.')
             curval = self._petrosian_function_ellip(a)
@@ -401,7 +403,6 @@ class SourceMorphology(object):
             elif curval < 0:
                 a_max = a
                 break
-            a += da
         assert(a_min < a_max)
 
         # Find root (interpolation would probably work, too)
@@ -428,8 +429,10 @@ class SourceMorphology(object):
         """
         # Find appropriate range for root search
         dr = self._dist_to_closest_corner / 100.0  # step size
-        r = self._annulus_width  # initial value
+        r_min = self._annulus_width
+        r = r_min  # initial value
         while True:
+            r += dr
             if r > self._dist_to_closest_corner:
                 raise Exception('rpet_circ not found within range.')
             curval = self._petrosian_function_circ(r)
@@ -441,7 +444,6 @@ class SourceMorphology(object):
             elif curval < 0:
                 r_max = r
                 break
-            r += dr
         assert(r_min < r_max)
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
@@ -1027,7 +1029,8 @@ class SourceMorphology(object):
         peaks = skimage.feature.peak_local_max(
             self._cutout_mid_smooth, indices=True, num_peaks=np.inf)
         num_peaks = peaks.shape[0]
-        peak_labels = np.arange(num_peaks, dtype=np.int64)
+        # The zero label is reserved for the background:
+        peak_labels = np.arange(1, num_peaks+1, dtype=np.int64)
         ypeak, xpeak = peaks.T
 
         markers = np.zeros(self._cutout_mid_smooth.shape, dtype=np.int64)
