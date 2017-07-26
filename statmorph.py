@@ -917,24 +917,17 @@ class SourceMorphology(object):
             np.float64(locs_main_clump), size=self._boxcar_size_mid)
         segmap = segmap_float > 0.5
 
-        #~ segmap = locs_main_clump
-        
+        # Make sure that brightest pixel is in segmap
+        ic = int(self._y_maxval_stamp)
+        jc = int(self._x_maxval_stamp)
+        if ~segmap[ic, jc]:
+            print('[segmap_mid] Warning: adding brightest pixel to segmap.')
+            segmap[ic, jc] = True
+            self.flag = 1
+
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(segmap, structure=s)
-
-        #~ # Only keep segment that contains the brightest pixel.
-        #~ ic = int(self._y_maxval_stamp)
-        #~ jc = int(self._x_maxval_stamp)
-        #~ if labeled_array[ic, jc] == 0:
-            #~ print('[MID segmap] Warning: adding brightest pixel to segmap.')
-            #~ neighbor_labels = labeled_array[ic-1:ic+2, jc-1:jc+2]
-            
-        # Only keep segment that contains the brightest pixel.
-        ic = int(self._y_maxval_stamp)
-        jc = int(self._x_maxval_stamp)
-        if labeled_array[ic, jc] == 0:
-            raise Exception('Brightest pixel is outside the main segment?')
 
         return labeled_array == labeled_array[ic, jc]
 
@@ -1204,6 +1197,7 @@ class SourceMorphology(object):
         # Center at (center of) brightest pixel
         xc = self._x_maxval_stamp + 0.5
         yc = self._y_maxval_stamp + 0.5
+        ic, jc = int(yc), int(xc)
 
         # Create a circular annulus around the brightest pixel
         # that only contains background sky (hopefully).
@@ -1246,23 +1240,15 @@ class SourceMorphology(object):
             image_nomask, size=self._boxcar_size_shape_asym)
         above_threshold = image_smooth >= threshold
 
-        #~ # Apply 1-sigma threshold
-        #~ above_threshold = image_nomask >= threshold
+        # Make sure that brightest pixel is in segmap
+        if ~above_threshold[ic, jc]:
+            print('[shape_asym] Warning: adding brightest pixel to segmap.')
+            above_threshold[ic, jc] = True
+            self.flag = 1
 
-
-        # 8-connected neighbor "footprint" for growing regions:
+        # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
-
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
-
-        #~ # Keep segment that contains the brightest pixel of the smoothed image.
-        #~ ic, jc = np.argwhere(image_smooth == np.max(image_smooth))[0]
-        #~ if labeled_array[ic, jc] == 0:
-            #~ raise Exception('Brightest pixel is outside the main segment?')
-
-        ic, jc = int(yc), int(xc)
-        if labeled_array[ic, jc] == 0:
-            raise Exception('Brightest pixel is outside the main segment?')
 
         return labeled_array == labeled_array[ic, jc]
 
