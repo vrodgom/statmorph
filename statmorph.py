@@ -74,6 +74,11 @@ def _radius_at_fraction_of_total(image, center, r_upper_bound, fraction):
     ap_total = photutils.CircularAperture(center, r_upper_bound)
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
     flag = 0  # flag=1 indicates a problem
+    
+    #~ if r_upper_bound <= 1.0:
+        #~ # Nothing to do
+        #~ r, flag = 0.0, 1
+        #~ return r, flag
 
     # Find appropriate range for root finder
     dr = r_upper_bound / 100.0  # step size
@@ -82,7 +87,7 @@ def _radius_at_fraction_of_total(image, center, r_upper_bound, fraction):
     while True:
         r += dr
         if r > r_upper_bound:
-            raise Exception('Root not found within range.')
+            raise Exception('Root not found within range. r_upper_bound = %g; center = %s' % (r_upper_bound, str(center)))
         curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
         if curval == 0:
             print('Warning: found root by pure chance!')
@@ -131,10 +136,7 @@ class SourceMorphology(object):
         must be >= 1. The default value is 2.0 (i.e., 2 times larger).
     remove_outliers : bool, optional
         If ``True``, remove outlying pixels as described in Lotz et al.
-        (2004), using the parameter ``n_sigma_outlier``. In the current
-        implementation, this operation is quite time-consuming.
-        By default it is set to ``False``, which should be fine for
-        reasonably clean data.
+        (2004), using the parameter ``n_sigma_outlier``.
     n_sigma_outlier : scalar, optional
         The number of standard deviations that define a pixel as an
         outlier, relative to its 8 neighbors. This parameter only
@@ -187,6 +189,11 @@ class SourceMorphology(object):
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
         The default value is 3.0.
+    lazy_evaluation : bool, optional
+        If ``True``, only calculate morphological parameters until
+        they are actually used. Note that the value of the
+        "bad measurement" flag may change depending on which
+        parameters have been calculated.
 
     References
     ----------
@@ -194,12 +201,12 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=2.0, remove_outliers=False, n_sigma_outlier=10,
+                 cutout_extent=2.0, remove_outliers=True, n_sigma_outlier=10,
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
                  border_size=5, skybox_size=20, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=100, sigma_mid=1.0, petro_extent_ellip=1.5,
-                 boxcar_size_shape_asym=3.0):
+                 boxcar_size_shape_asym=3.0, lazy_evaluation=False):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._annulus_width = annulus_width
@@ -216,12 +223,14 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_ellip = petro_extent_ellip
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
+        self._lazy_evaluation = lazy_evaluation
 
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
-        # This attempts to flag bad measurements:
-        self.flag = 0
+        # The following properties may be modified by other functions:
+        self.flag = 0  # attempts to flag bad measurements
+        self.num_badpixels = -1  # records the number of "bad pixels"
 
         # Centroid of the source relative to the "postage stamp" cutout:
         self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
@@ -231,8 +240,37 @@ class SourceMorphology(object):
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
         self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
 
+        # Optionally, go ahead and evaluate everything during initialization:
+        if not self._lazy_evaluation:
+            self.calculate_morphology()
+
     def __getitem__(self, key):
         return getattr(self, key)
+
+    def calculate_morphology(self):
+        """
+        Calculate all morphological parameters, which are stored
+        as "lazy" properties.
+        """
+        quantities = [
+            'petrosian_radius_circ',
+            'petrosian_radius_ellip',
+            'gini',
+            'm20',
+            'sn_per_pixel',
+            'concentration',
+            'asymmetry',
+            'smoothness',
+            'multimode',
+            'intensity',
+            'deviation',
+            'half_light_radius',
+            'rmax',
+            'outer_asymmetry',
+            'shape_asymmetry',
+        ]
+        for q in quantities:
+            tmp = self[q]
 
     @lazyproperty
     def _slice_stamp(self):
@@ -299,22 +337,26 @@ class SourceMorphology(object):
                                 self._props._data[self._slice_stamp], 0.0)
 
         if self._remove_outliers:
-            start = time.time()
-            print('Removing outliers...')
-            local_footprint = np.array([  # exclude central pixel
+            # ndi.generic_filter(image, np.std, ...) is too slow,
+            # so we do a workaround using ndi.convolve.
+            
+            # Pixel weights, excluding central pixel.
+            w = np.array([
                 [1, 1, 1],
                 [1, 0, 1],
-                [1, 1, 1],
-            ])
-            local_mean = ndi.filters.generic_filter(
-                cutout_stamp, np.mean, footprint=local_footprint)
-            local_std = ndi.filters.generic_filter(
-                cutout_stamp, np.std, footprint=local_footprint)
+                [1, 1, 1]], dtype=np.float64)
+            w = w / np.sum(w)
+            
+            # Use the fact that var(x) = <x^2> - <x>^2.
+            local_mean = ndi.convolve(cutout_stamp, w)
+            local_mean2 = ndi.convolve(cutout_stamp**2, w)
+            local_std = np.sqrt(local_mean2 - local_mean**2)
+
+            # Set "bad pixels" to zero.
             bad_pixels = (np.abs(cutout_stamp - local_mean) >
                           self._n_sigma_outlier * local_std)
             cutout_stamp[bad_pixels] = 0.0
-            print('There are %d bad pixels.' % (np.sum(bad_pixels)))
-            print('It took', time.time() - start, 's to remove them.\n')
+            self.num_badpixels = np.sum(bad_pixels)
 
         return cutout_stamp
 
@@ -1042,7 +1084,7 @@ class SourceMorphology(object):
             if ratio_min < 0:  # valid "ratios" should be negative
                 break
             elif mid_stepsize < 1e-3:
-                print('[M statistic] Warning: Single clump! (Probable artifact.)')
+                print('[M statistic] Warning: Single clump!')
                 return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
@@ -1272,6 +1314,10 @@ class SourceMorphology(object):
         
         # Only consider pixels within the segmap.
         rmax = np.max(distances[self._segmap_shape_asym])
+        
+        #~ # Yes, this can happen:
+        #~ if rmax <= 1.0:
+            #~ self.flag = 1
 
         return rmax
 
