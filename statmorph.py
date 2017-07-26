@@ -65,19 +65,41 @@ def _fraction_of_total_function(r, image, center, fraction, total_sum):
 
     return ap_sum / total_sum - fraction
 
-def _radius_at_fraction_of_total(image, center, r_max, fraction):
+def _radius_at_fraction_of_total(image, center, r_upper_bound, fraction):
     """
     Return the radius (in pixels) of a concentric circle
     that contains a given fraction of the total light.
     The ``center`` is given as (x,y)
     """
-    r_min = 1.0
-    ap_total = photutils.CircularAperture(center, r_max)
+    ap_total = photutils.CircularAperture(center, r_upper_bound)
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    flag = 0  # flag=1 indicates a problem
+
+    # Find appropriate range for root finder
+    dr = r_upper_bound / 100.0  # step size
+    r = 1.0  # initial value
+    r_min, r_max = None, None
+    while True:
+        r += dr
+        if r > r_upper_bound:
+            raise Exception('Root not found within range.')
+        curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
+        if curval == 0:
+            print('Warning: found root by pure chance!')
+            return r, flag
+        elif curval < 0:
+            r_min = r
+        elif curval > 0:
+            if r_min is None:
+                flag = 1
+            else:
+                r_max = r
+                break
+
     r = opt.brentq(_fraction_of_total_function, r_min, r_max,
                    args=(image, center, fraction, total_sum), xtol=1e-6)
 
-    return r
+    return r, flag
 
 
 class SourceMorphology(object):
@@ -131,11 +153,11 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
-    border_size : scalar, optional
+    border_size : int, optional
         The number of pixels that are skipped from each border of the
         "postage stamp" image cutout when finding the skybox. The
         default is 5 pixels.
-    skybox_size : scalar, optional
+    skybox_size : int, optional
         The size in pixels of the (square) "skybox" used to measure
         properties of the image background. The default is 20 pixels.
     petro_extent_circ : float, optional
@@ -251,6 +273,17 @@ class SourceMorphology(object):
         return mask_stamp
 
     @lazyproperty
+    def _mask_stamp_no_bg(self):
+        """
+        Similar to ``_mask_stamp``, but also mask the background.
+        """
+        segmap_stamp = self._props._segment_img.data[self._slice_stamp]
+        mask_stamp = segmap_stamp != self._props.label
+        if self._props._mask is not None:
+            mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
+        return mask_stamp
+
+    @lazyproperty
     def _cutout_stamp_maskzeroed(self):
         """
         Return a data cutout with its shape and position determined
@@ -286,11 +319,12 @@ class SourceMorphology(object):
         return cutout_stamp
 
     @lazyproperty
-    def _sorted_pixelvals_stamp(self):
+    def _sorted_pixelvals_stamp_no_bg(self):
         """
-        Just the sorted pixel values of the postage stamp.
+        The sorted pixel values of the (zero-masked) postage stamp,
+        excluding masked values and the background.
         """
-        return np.sort(self._cutout_stamp_maskzeroed.flatten())
+        return np.sort(self._cutout_stamp_maskzeroed[~self._mask_stamp_no_bg])
 
     @lazyproperty
     def _dist_to_closest_corner(self):
@@ -404,7 +438,9 @@ class SourceMorphology(object):
             elif curval > 0:
                 a_min = a
             elif curval < 0:
-                if a_min is not None:
+                if a_min is None:
+                    self.flag = 1
+                else:
                     a_max = a
                     break
 
@@ -444,7 +480,9 @@ class SourceMorphology(object):
             elif curval > 0:
                 r_min = r
             elif curval < 0:
-                if r_min is not None:
+                if r_min is None:
+                    self.flag = 1
+                else:
                     r_max = r
                     break
 
@@ -488,9 +526,8 @@ class SourceMorphology(object):
             self.flag = 1
 
         # Regardless of the "bad measurement" flag, we always keep the
-        # segment that contains the brightest pixel.
-        ic = int(self._y_maxval_stamp)
-        jc = int(self._x_maxval_stamp)
+        # segment that contains the brightest pixel of the smoothed image.
+        ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
         if labeled_array[ic, jc] == 0:
             raise Exception('Brightest pixel is outside the main segment?')
 
@@ -567,42 +604,61 @@ class SourceMorphology(object):
     @lazyproperty
     def _slice_skybox(self):
         """
-        Find a region of the sky that only contains background.
+        Try to find a region of the sky that only contains background.
         
         In principle, a more accurate approach could be adopted
         (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
-        border_size = self._border_size
-        skybox_size = self._skybox_size
-
-        image = self._props._data[self._slice_stamp]
         segmap = self._props._segment_img.data[self._slice_stamp]
-        mask = np.zeros(image.shape, dtype=np.bool8)
+        mask = np.zeros(segmap.shape, dtype=np.bool8)
         if self._props._mask is not None:
             mask = self._props._mask[self._slice_stamp]
 
-        ny, nx = image.shape
-        for i in range(border_size, ny - border_size - skybox_size):
-            for j in range(border_size, nx - border_size - skybox_size):
-                boxslice = (slice(i, i + skybox_size),
-                            slice(j, j + skybox_size))
-                if np.all(segmap[boxslice] == 0) and np.all(~mask[boxslice]):
-                    return boxslice
+        ny, nx = segmap.shape
+        while True:
+            for i in range(self._border_size,
+                           ny - self._border_size - self._skybox_size):
+                for j in range(self._border_size,
+                               nx - self._border_size - self._skybox_size):
+                    boxslice = (slice(i, i + self._skybox_size),
+                                slice(j, j + self._skybox_size))
+                    if np.all(segmap[boxslice] == 0) and np.all(~mask[boxslice]):
+                        return boxslice
 
-        # If we got here, something went wrong.
-        raise Exception('Error: skybox not found.')
+            # If we got here, a skybox of the given size was not found.
+            if self._skybox_size < self._border_size:
+                self.flag = 1
+                print('[skybox] Warning: forcing skybox to lower-left corner.')
+                boxslice = (
+                    slice(self._border_size, self._border_size + self._skybox_size),
+                    slice(self._border_size, self._border_size + self._skybox_size))
+                return boxslice
+            else:
+                self._skybox_size //= 2
+                print('[skybox] Warning: Reducing skybox size to %d.' % (
+                    self._skybox_size))
+
+        # Should not reach this point.
+        assert(False)
 
     @lazyproperty
     def _sky_mean(self):
         """
-        Standard deviation of the background.
+        Mean background value.
         """
         return np.mean(self._cutout_stamp_maskzeroed[self._slice_skybox])
 
     @lazyproperty
+    def _sky_median(self):
+        """
+        Median background value.
+        """
+        return np.median(self._cutout_stamp_maskzeroed[self._slice_skybox])
+
+    @lazyproperty
     def _sky_sigma(self):
         """
-        Mean background value.
+        Standard deviation of the background.
         """
         return np.std(self._cutout_stamp_maskzeroed[self._slice_skybox])
 
@@ -739,10 +795,11 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
-        r_max = self._petro_extent_circ * self.petrosian_radius_circ
+        r_upper = self._petro_extent_circ * self.petrosian_radius_circ
         
-        r_20 = _radius_at_fraction_of_total(image, center, r_max, 0.2)
-        r_80 = _radius_at_fraction_of_total(image, center, r_max, 0.8)
+        r_20, flag_20 = _radius_at_fraction_of_total(image, center, r_upper, 0.2)
+        r_80, flag_80 = _radius_at_fraction_of_total(image, center, r_upper, 0.8)
+        self.flag = max(self.flag, flag_20, flag_80)
         
         return 5.0 * np.log10(r_80 / r_20)
 
@@ -774,14 +831,12 @@ class SourceMorphology(object):
     def _segmap_mid_main_clump(self, q):
         """
         For a given quantile ``q``, return a boolean array indicating
-        the locations of pixels above ``q`` that are also part of
-        the "main" clump.
+        the locations of pixels above ``q`` (within the original segment)
+        that are also part of the "main" clump.
         """
-        image = self._cutout_stamp_maskzeroed
-        sorted_pixelvals = self._sorted_pixelvals_stamp
-
-        threshold = _quantile(sorted_pixelvals, q)
-        above_threshold = image >= threshold
+        threshold = _quantile(self._sorted_pixelvals_stamp_no_bg, q)
+        above_threshold = ((self._cutout_stamp_maskzeroed >= threshold) &
+                           (~self._mask_stamp_no_bg))
 
         # Instead of assuming that the main segment is at the center
         # of the stamp, use the position of the brightest pixel:
@@ -806,15 +861,14 @@ class SourceMorphology(object):
         pixels at the level of ``q`` (within the main clump) divided by
         the mean of pixels above ``q`` (within the main clump).
         """
-        image = self._cutout_stamp_maskzeroed
-        sorted_pixelvals = self._sorted_pixelvals_stamp
-
         locs_main_clump = self._segmap_mid_main_clump(q)
         if locs_main_clump is None:
             ratio = 1.0
         else:
-            mean_flux_main_clump = np.mean(image[locs_main_clump])
-            mean_flux_new_pixels = _quantile(sorted_pixelvals, q)
+            mean_flux_main_clump = np.mean(
+                self._cutout_stamp_maskzeroed[locs_main_clump])
+            mean_flux_new_pixels = _quantile(
+                self._sorted_pixelvals_stamp_no_bg, q)
             ratio = mean_flux_new_pixels / mean_flux_main_clump
 
         return ratio - self._eta
@@ -826,12 +880,11 @@ class SourceMorphology(object):
         automatically finds an upper limit for the quantile that
         determines the MID segmap.
         """
-        image = self._cutout_stamp_maskzeroed
-        sorted_pixelvals = self._sorted_pixelvals_stamp
+        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg)
 
         num_bright_pixels = 2  # starting point
-        while num_bright_pixels < image.size:
-            q = 1.0 - float(num_bright_pixels) / float(image.size)
+        while num_bright_pixels < num_pixelvals:
+            q = 1.0 - float(num_bright_pixels) / float(num_pixelvals)
             if self._segmap_mid_main_clump(q) is None:
                 num_bright_pixels = 2 * num_bright_pixels
             else:
@@ -849,25 +902,34 @@ class SourceMorphology(object):
         This implementation is independent of the number of quantiles
         used in the calculation, as well as other parameters.
         """
-        image = self._cutout_stamp_maskzeroed
-        sorted_pixelvals = self._sorted_pixelvals_stamp
+        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg)
 
         # Find appropriate quantile using numerical solver
         q_min = 0.0
         q_max = self._segmap_mid_upper_bound
-        xtol = 1.0 / float(image.size)
+        xtol = 1.0 / float(num_pixelvals)
         q = opt.brentq(self._segmap_mid_function, q_min, q_max, xtol=xtol)
 
-        # Regularize a bit the shape of the segmap:
         locs_main_clump = self._segmap_mid_main_clump(q)
+
+        # Regularize a bit the shape of the segmap:
         segmap_float = ndi.uniform_filter(
             np.float64(locs_main_clump), size=self._boxcar_size_mid)
         segmap = segmap_float > 0.5
 
+        #~ segmap = locs_main_clump
+        
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(segmap, structure=s)
 
+        #~ # Only keep segment that contains the brightest pixel.
+        #~ ic = int(self._y_maxval_stamp)
+        #~ jc = int(self._x_maxval_stamp)
+        #~ if labeled_array[ic, jc] == 0:
+            #~ print('[MID segmap] Warning: adding brightest pixel to segmap.')
+            #~ neighbor_labels = labeled_array[ic-1:ic+2, jc-1:jc+2]
+            
         # Only keep segment that contains the brightest pixel.
         ic = int(self._y_maxval_stamp)
         jc = int(self._x_maxval_stamp)
@@ -1115,7 +1177,10 @@ class SourceMorphology(object):
         # Center at brightest pixel
         center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
-        return _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+        r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+        self.flag = max(self.flag, flag)
+        
+        return r
 
     @lazyproperty
     def _segmap_shape_asym(self):
@@ -1139,7 +1204,6 @@ class SourceMorphology(object):
         # Center at (center of) brightest pixel
         xc = self._x_maxval_stamp + 0.5
         yc = self._y_maxval_stamp + 0.5
-        ic, jc = int(yc), int(xc)
 
         # Create a circular annulus around the brightest pixel
         # that only contains background sky (hopefully).
@@ -1153,6 +1217,14 @@ class SourceMorphology(object):
         circ_annulus_mask = circ_annulus_mask.to_image((ny, nx))
         # Invert mask and exclude other sources
         total_mask = self._mask_stamp | np.logical_not(circ_annulus_mask)
+
+        # If sky area is too small (e.g., if annulus is outside the image),
+        # use skybox instead.
+        if np.sum(~total_mask) < self._skybox_size**2:
+            print('[shape_asym] Warning: using skybox for background.')
+            total_mask = np.ones((ny, nx), dtype=np.bool8)
+            total_mask[self._slice_skybox] = False
+
         # Do sigma-clipping -- 5 iterations should be enough
         mean, median, std = sigma_clipped_stats(
             self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0, iters=5,
@@ -1174,10 +1246,21 @@ class SourceMorphology(object):
             image_nomask, size=self._boxcar_size_shape_asym)
         above_threshold = image_smooth >= threshold
 
+        #~ # Apply 1-sigma threshold
+        #~ above_threshold = image_nomask >= threshold
+
+
         # 8-connected neighbor "footprint" for growing regions:
         s = ndi.generate_binary_structure(2, 2)
 
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
+
+        #~ # Keep segment that contains the brightest pixel of the smoothed image.
+        #~ ic, jc = np.argwhere(image_smooth == np.max(image_smooth))[0]
+        #~ if labeled_array[ic, jc] == 0:
+            #~ raise Exception('Brightest pixel is outside the main segment?')
+
+        ic, jc = int(yc), int(xc)
         if labeled_array[ic, jc] == 0:
             raise Exception('Brightest pixel is outside the main segment?')
 
