@@ -133,7 +133,7 @@ class SourceMorphology(object):
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
-        must be >= 1. The default value is 2.0 (i.e., 2 times larger).
+        must be >= 1.
     remove_outliers : bool, optional
         If ``True``, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``.
@@ -155,13 +155,17 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
+    contiguous_gini_segmap : bool, optional
+        If ``True``, force the Gini segmap to be contiguous. Regardless
+        of the value of this parameter, the "bad measurement" flag is
+        activated when the Gini segmap is not contiguous.
     border_size : int, optional
         The number of pixels that are skipped from each border of the
         "postage stamp" image cutout when finding the skybox. The
         default is 5 pixels.
     skybox_size : int, optional
         The size in pixels of the (square) "skybox" used to measure
-        properties of the image background. The default is 20 pixels.
+        properties of the image background.
     petro_extent_circ : float, optional
         The radius of the circular aperture used for the asymmetry
         calculation, in units of the circular Petrosian radius. The
@@ -175,9 +179,9 @@ class SourceMorphology(object):
         The default value is 3.0.
     niter_bh_mid : int, optional
         When calculating the multimode statistic, this is the number of
-        iterations in the basin-hopping stage of the maximization. The
-        default value of 100 is probably enough for "production" runs,
-        but lower values can significantly increase speed.
+        iterations in the basin-hopping stage of the maximization.
+        A value of at least 100 is recommended for "production" runs,
+        but it can be time-consuming. The default value is 5.
     sigma_mid : float, optional
         In the MID calculations, this is the smoothing scale (in pixels)
         used to compute the intensity (I) statistic. The default is 1.0.
@@ -201,19 +205,21 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None,
-                 cutout_extent=2.0, remove_outliers=True, n_sigma_outlier=10,
+                 cutout_extent=1.5, remove_outliers=True, n_sigma_outlier=10,
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
-                 border_size=5, skybox_size=20, petro_extent_circ=1.5,
+                 contiguous_gini_segmap=False,
+                 border_size=4, skybox_size=64, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
-                 niter_bh_mid=100, sigma_mid=1.0, petro_extent_ellip=1.5,
+                 niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
                  boxcar_size_shape_asym=3.0, lazy_evaluation=False):
         self._variance = variance
         self._cutout_extent = cutout_extent
+        self._remove_outliers = remove_outliers
+        self._n_sigma_outlier = n_sigma_outlier
         self._annulus_width = annulus_width
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
-        self._remove_outliers = remove_outliers
-        self._n_sigma_outlier = n_sigma_outlier
+        self._contiguous_gini_segmap = contiguous_gini_segmap
         self._border_size = border_size
         self._skybox_size = skybox_size
         self._petro_extent_circ = petro_extent_circ
@@ -232,9 +238,15 @@ class SourceMorphology(object):
         self.flag = 0  # attempts to flag bad measurements
         self.num_badpixels = -1  # records the number of "bad pixels"
 
+        # Position of the "postage stamp" cutout:
+        self._xmin_stamp = self._slice_stamp[1].start
+        self._ymin_stamp = self._slice_stamp[0].start
+        self._xmax_stamp = self._slice_stamp[1].stop - 1
+        self._ymax_stamp = self._slice_stamp[0].stop - 1
+
         # Centroid of the source relative to the "postage stamp" cutout:
-        self._xc_stamp = self._props.xcentroid.value - self._slice_stamp[1].start
-        self._yc_stamp = self._props.ycentroid.value - self._slice_stamp[0].start
+        self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
+        self._yc_stamp = self._props.ycentroid.value - self._ymin_stamp
 
         # Position of the brightest pixel relative to the cutout:
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
@@ -291,8 +303,8 @@ class SourceMorphology(object):
 
         # Make cutout
         ny, nx = self._props._data.shape
-        slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist)),
-                        slice(max(0, xc-dist), min(nx, xc+dist)))
+        slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist+1)),
+                        slice(max(0, xc-dist), min(nx, xc+dist+1)))
 
         return slice_stamp
 
@@ -559,21 +571,28 @@ class SourceMorphology(object):
 
         above_threshold = cutout_smooth >= ellip_annulus_mean_flux
 
-        # Grow regions with 8-connected neighbor "footprint"
-        s = ndi.generate_binary_structure(2, 2)
-        labeled_array, num_features = ndi.label(above_threshold, structure=s)
+        if self._contiguous_gini_segmap:
+            # Grow regions with 8-connected neighbor "footprint"
+            s = ndi.generate_binary_structure(2, 2)
+            labeled_array, num_features = ndi.label(above_threshold, structure=s)
 
-        # If more than one region, activate the "bad measurement" flag:
-        if num_features > 1:
-            self.flag = 1
+            # If more than one region, activate the "bad measurement" flag:
+            if num_features > 1:
+                self.flag = 1
 
-        # Regardless of the "bad measurement" flag, we always keep the
-        # segment that contains the brightest pixel of the smoothed image.
-        ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
-        if labeled_array[ic, jc] == 0:
-            raise Exception('Brightest pixel is outside the main segment?')
+            # Regardless of the "bad measurement" flag, we always keep the
+            # segment that contains the brightest pixel of the smoothed image.
+            ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
+            if labeled_array[ic, jc] == 0:
+                raise Exception('Brightest pixel is outside the main segment?')
 
-        return labeled_array == labeled_array[ic, jc]
+            segmap = labeled_array == labeled_array[ic, jc]
+
+        else:
+            segmap = above_threshold
+        
+        return segmap
+
 
     @lazyproperty
     def gini(self):
