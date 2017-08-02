@@ -58,36 +58,35 @@ def _aperture_mean_nomask(ap, image, **kwargs):
 def _fraction_of_total_function(r, image, center, fraction, total_sum):
     """
     Helper function to calculate ``_radius_at_fraction_of_total``.
-    The ``center`` is given as (x,y)
     """
     ap = photutils.CircularAperture(center, r)
     ap_sum = ap.do_photometry(image, method='exact')[0][0]
 
     return ap_sum / total_sum - fraction
 
-def _radius_at_fraction_of_total(image, center, r_upper_bound, fraction):
+def _radius_at_fraction_of_total(image, center, r_total, fraction):
     """
     Return the radius (in pixels) of a concentric circle
-    that contains a given fraction of the total light.
-    The ``center`` is given as (x,y)
+    that contains a given fraction of the light within ``r_total``.
+    The ``center`` is given as (x,y).
     """
-    ap_total = photutils.CircularAperture(center, r_upper_bound)
+    ap_total = photutils.CircularAperture(center, r_total)
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    if total_sum <= 0:
+        raise Exception('Total flux sum should be positive.')
+
     flag = 0  # flag=1 indicates a problem
-    
-    #~ if r_upper_bound <= 1.0:
-        #~ # Nothing to do
-        #~ r, flag = 0.0, 1
-        #~ return r, flag
+    r_inner = 1.0  # at least one pixel
+    assert(r_total > r_inner)
 
     # Find appropriate range for root finder
-    dr = r_upper_bound / 100.0  # step size
-    r = 1.0  # initial value
+    dr = (r_total - r_inner) / 100.0  # step size
     r_min, r_max = None, None
+    r = r_inner  # initial value
     while True:
         r += dr
-        if r > r_upper_bound:
-            raise Exception('Root not found within range. r_upper_bound = %g; center = %s' % (r_upper_bound, str(center)))
+        if r > r_total:
+            raise Exception('Root not found within range.')
         curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
         if curval == 0:
             print('Warning: found root by pure chance!')
@@ -96,6 +95,7 @@ def _radius_at_fraction_of_total(image, center, r_upper_bound, fraction):
             r_min = r
         elif curval > 0:
             if r_min is None:
+                print('Warning: r_min is not defined yet.')
                 flag = 1
             else:
                 r_max = r
@@ -247,6 +247,12 @@ class SourceMorphology(object):
         # Centroid of the source relative to the "postage stamp" cutout:
         self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
         self._yc_stamp = self._props.ycentroid.value - self._ymin_stamp
+
+        # Print warning if centroid is masked:
+        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
+        if self._cutout_stamp_maskzeroed[ic, jc] == 0:
+            print('Warning: Centroid is masked.')
+            self.flag = 1
 
         # Position of the brightest pixel relative to the cutout:
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
@@ -828,13 +834,16 @@ class SourceMorphology(object):
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the (CAS) asymmetry.
         """
-        image = self._cutout_stamp_maskzeroed
-
-        # Initial guess
-        center_0 = np.array([self._xc_stamp, self._yc_stamp])
-        
+        center_0 = np.array([self._xc_stamp, self._yc_stamp])  # initial guess
         center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'cas'), xtol=1e-6, disp=0)
+                               args=(self._cutout_stamp_maskzeroed, 'cas'),
+                               xtol=1e-6, disp=0)
+
+        # Print warning if center is masked
+        ic, jc = int(center_asym[1]), int(center_asym[0])
+        if self._cutout_stamp_maskzeroed[ic, jc] == 0:
+            print('Warning: Asymmetry center is masked.')
+            self.flag = 1
 
         return center_asym
 
@@ -1353,6 +1362,8 @@ class SourceMorphology(object):
         
         center_asym = opt.fmin(self._asymmetry_function, center_0,
                                args=(image, 'outer'), xtol=1e-6, disp=0)
+
+
 
         return center_asym
 
