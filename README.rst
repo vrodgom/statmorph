@@ -97,8 +97,8 @@ properties of the first labeled source.
     # Print some properties of the first source in the segmentation map
     morph = source_morphology[0]
     quantities = [
-        'petrosian_radius_circ',
-        'petrosian_radius_ellip',
+        'rpetro_circ',
+        'rpetro_ellip',
         'gini',
         'm20',
         'sn_per_pixel',
@@ -127,8 +127,8 @@ For Pan-STARRS galaxy *J235958.6+281704* in the g-band, this returns:
 
 ::
 
-    petrosian_radius_circ:  55.184543    (Time:  0.047625 s)
-   petrosian_radius_ellip:  97.532795    (Time:  1.222480 s)
+              rpetro_circ:  55.184543    (Time:  0.047625 s)
+             rpetro_ellip:  97.532795    (Time:  1.222480 s)
                      gini:   0.574485    (Time:  0.137494 s)
                       m20:  -1.955428    (Time:  0.027181 s)
              sn_per_pixel:   3.981467    (Time:  0.001153 s)

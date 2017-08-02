@@ -271,8 +271,8 @@ class SourceMorphology(object):
         as "lazy" properties.
         """
         quantities = [
-            'petrosian_radius_circ',
-            'petrosian_radius_ellip',
+            'rpetro_circ',
+            'rpetro_ellip',
             'gini',
             'm20',
             'sn_per_pixel',
@@ -437,7 +437,7 @@ class SourceMorphology(object):
 
     def _petrosian_function_circ(self, r):
         """
-        Helper function to calculate ``petrosian_radius_circ``.
+        Helper function to calculate ``rpetro_circ``.
         
         For the circle with radius `r`, return the
         ratio of the mean flux over a pixel-wide circular
@@ -467,7 +467,7 @@ class SourceMorphology(object):
         return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
 
     @lazyproperty
-    def petrosian_radius_ellip(self):
+    def rpetro_ellip(self):
         """
         Compute the Petrosian "radius" (actually the semi-major axis)
         for concentric elliptical apertures.
@@ -510,7 +510,7 @@ class SourceMorphology(object):
         return rpetro_ellip
 
     @lazyproperty
-    def petrosian_radius_circ(self):
+    def rpetro_circ(self):
         """
         Compute the Petrosian radius for concentric circular apertures.
 
@@ -562,12 +562,12 @@ class SourceMorphology(object):
         based on the Petrosian "radius".
         """
         # Smooth image
-        petro_sigma = self._petro_fraction_gini * self.petrosian_radius_ellip
+        petro_sigma = self._petro_fraction_gini * self.rpetro_ellip
         cutout_smooth = ndi.gaussian_filter(self._cutout_stamp_maskzeroed, petro_sigma)
 
         # Use mean flux at the Petrosian "radius" as threshold
-        a_in = self.petrosian_radius_ellip - 0.5 * self._annulus_width
-        a_out = self.petrosian_radius_ellip + 0.5 * self._annulus_width
+        a_in = self.rpetro_ellip - 0.5 * self._annulus_width
+        a_out = self.rpetro_ellip + 0.5 * self._annulus_width
         b_out = a_out / self._props.elongation.value
         theta = self._props.orientation.value
         ellip_annulus = photutils.EllipticalAnnulus(
@@ -747,7 +747,7 @@ class SourceMorphology(object):
 
         # If the smoothing "boxcar" is larger than the skybox itself,
         # this just sets all values equal to the mean:
-        boxcar_size = int(self._petro_fraction_cas * self.petrosian_radius_circ)
+        boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         bkg_smooth = ndi.uniform_filter(bkg, size=boxcar_size)
 
         return np.sum(np.abs(bkg_smooth - bkg)) / float(bkg.size)
@@ -805,7 +805,7 @@ class SourceMorphology(object):
 
         # Note that aperture is defined for the new coordinates
         if kind == 'cas':
-            r = self._petro_extent_circ * self.petrosian_radius_circ
+            r = self._petro_extent_circ * self.rpetro_circ
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
             r_in = self.half_light_radius
@@ -865,7 +865,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
-        r_upper = self._petro_extent_circ * self.petrosian_radius_circ
+        r_upper = self._petro_extent_circ * self.rpetro_circ
         
         r_20, flag_20 = _radius_at_fraction_of_total(image, center, r_upper, 0.2)
         r_80, flag_80 = _radius_at_fraction_of_total(image, center, r_upper, 0.8)
@@ -879,12 +879,12 @@ class SourceMorphology(object):
         Calculate smoothness (a.k.a. clumpiness) as described in
         Lotz et al. (2004).
         """
-        r = self._petro_extent_circ * self.petrosian_radius_circ
+        r = self._petro_extent_circ * self.rpetro_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
 
         image = self._cutout_stamp_maskzeroed
         
-        boxcar_size = int(self._petro_fraction_cas * self.petrosian_radius_circ)
+        boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         image_smooth = ndi.uniform_filter(image, size=boxcar_size)
         
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
@@ -1271,8 +1271,8 @@ class SourceMorphology(object):
 
         # Create a circular annulus around the brightest pixel
         # that only contains background sky (hopefully).
-        r_in = self._petro_extent_ellip * self.petrosian_radius_ellip
-        r_out = 2.0 * self._petro_extent_ellip * self.petrosian_radius_ellip
+        r_in = self._petro_extent_ellip * self.rpetro_ellip
+        r_out = 2.0 * self._petro_extent_ellip * self.rpetro_ellip
         circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
