@@ -379,6 +379,15 @@ class SourceMorphology(object):
         return cutout_stamp
 
     @lazyproperty
+    def _cutout_stamp_maskzeroed_no_bg(self):
+        """
+        Like ``_cutout_stamp_maskzeroed``, but also mask the
+        background.
+        """
+        return np.where(~self._mask_stamp_no_bg,
+                        self._cutout_stamp_maskzeroed, 0.0)
+
+    @lazyproperty
     def _sorted_pixelvals_stamp_no_bg(self):
         """
         The sorted pixel values of the (zero-masked) postage stamp,
@@ -400,7 +409,100 @@ class SourceMorphology(object):
 
         return np.sqrt(x_dist**2 + y_dist**2)
 
-    def _petrosian_function_ellip(self, a):
+    def _petrosian_function_circ(self, r, center):
+        """
+        Helper function to calculate the circular Petrosian radius.
+        
+        For a given radius ``r``, return the ratio of the mean flux
+        over a circular annulus divided by the mean flux within the
+        circle, minus "eta" (eq. 4 from Lotz et al. 2004). The root
+        of this function is the Petrosian radius.
+        """
+        r_in = r - 0.5 * self._annulus_width
+        r_out = r + 0.5 * self._annulus_width
+
+        circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
+        circ_aperture = photutils.CircularAperture(center, r)
+
+        circ_annulus_mean_flux = _aperture_mean_nomask(
+            circ_annulus, self._cutout_stamp_maskzeroed, method='exact')
+        circ_aperture_mean_flux = _aperture_mean_nomask(
+            circ_aperture, self._cutout_stamp_maskzeroed, method='exact')
+        
+        # Just in case:
+        circ_annulus_mean_flux = np.abs(circ_annulus_mean_flux)
+        circ_aperture_mean_flux = np.abs(circ_aperture_mean_flux)
+        
+        if circ_aperture_mean_flux == 0:
+            ratio = 1.0
+            self.flag = 1
+        else:
+            ratio = circ_annulus_mean_flux / circ_aperture_mean_flux
+
+        return ratio - self._eta
+
+    def _rpetro_circ_generic(self, center):
+        """
+        Compute the Petrosian radius for concentric circular apertures.
+
+        Notes
+        -----
+        The so-called "curve of growth" is not always monotonic,
+        e.g., when there is a bright, unlabeled and unmasked
+        secondary source in the image, so we cannot just apply a
+        root-finding algorithm over the full interval.
+        Instead, we proceed in two stages: first we do a coarse,
+        brute-force search for an appropriate interval (that
+        contains the root), and then we apply the root-finder.
+
+        """
+        # Find appropriate range for root finder
+        r_inner = self._annulus_width
+        dr = (self._dist_to_closest_corner - r_inner) / 100.0  # step size
+        r_min, r_max = None, None
+        r = r_inner  # initial value
+        while True:
+            r += dr
+            if r > self._dist_to_closest_corner:
+                raise Exception('rpet_circ not found within range.')
+            curval = self._petrosian_function_circ(r, center)
+            if curval == 0:
+                print('Warning: we found rpet_circ by pure chance!')
+                return r
+            elif curval > 0:
+                r_min = r
+            elif curval < 0:
+                if r_min is None:
+                    print('[rpetro_circ] Warning: r_min is not defined yet.')
+                    self.flag = 1
+                else:
+                    r_max = r
+                    break
+
+        rpetro_circ = opt.brentq(self._petrosian_function_circ, 
+                                 r_min, r_max, args=(center,), xtol=1e-6)
+
+        return rpetro_circ
+
+    @lazyproperty
+    def _rpetro_circ_centroid(self):
+        """
+        Calculate the Petrosian radius with respect to the centroid.
+        This is only used as a preliminary value for the asymmetry
+        calculation.
+        """
+        center = np.array([self._xc_stamp, self._yc_stamp])
+        return self._rpetro_circ_generic(center)
+
+    @lazyproperty
+    def rpetro_circ(self):
+        """
+        Calculate the Petrosian radius with respect to the point
+        that minimizes the asymmetry.
+        """
+        return self._rpetro_circ_generic(self._asymmetry_center)
+
+    def _petrosian_function_ellip(self, a, center, elongation, theta):
         """
         Helper function to calculate the Petrosian "radius".
         
@@ -410,64 +512,36 @@ class SourceMorphology(object):
         minus "eta" (eq. 4 from Lotz et al. 2004). The root of
         this function is the Petrosian "radius".
         
-        Notes
-        -----
-        The original IDL implementation uses the center of asymmetry
-        for this calculation. Here we use the centroid.
-
         """
-        b = a / self._props.elongation.value
+        b = a / elongation
         a_in = a - 0.5 * self._annulus_width
         a_out = a + 0.5 * self._annulus_width
 
-        b_out = a_out / self._props.elongation.value
-        theta = self._props.orientation.value
+        b_out = a_out / elongation
 
         ellip_annulus = photutils.EllipticalAnnulus(
-            (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
+            center, a_in, a_out, b_out, theta)
         ellip_aperture = photutils.EllipticalAperture(
-            (self._xc_stamp, self._yc_stamp), a, b, theta)
+            center, a, b, theta)
 
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, self._cutout_stamp_maskzeroed, method='exact')
         ellip_aperture_mean_flux = _aperture_mean_nomask(
             ellip_aperture, self._cutout_stamp_maskzeroed, method='exact')
 
-        return ellip_annulus_mean_flux / ellip_aperture_mean_flux - self._eta
+        # Just in case:
+        ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
+        ellip_aperture_mean_flux = np.abs(ellip_aperture_mean_flux)
 
-    def _petrosian_function_circ(self, r):
-        """
-        Helper function to calculate ``rpetro_circ``.
-        
-        For the circle with radius `r`, return the
-        ratio of the mean flux over a pixel-wide circular
-        annulus divided by the mean flux within the circle,
-        minus "eta" (eq. 4 from Lotz et al. 2004). The root of
-        this function is the Petrosian radius.
+        if ellip_aperture_mean_flux == 0:
+            ratio = 1.0
+            self.flag = 1
+        else:
+            ratio = ellip_annulus_mean_flux / ellip_aperture_mean_flux
 
-        Notes
-        -----
-        The original IDL implementation uses the center of asymmetry
-        for this calculation. Here we use the centroid.
+        return ratio - self._eta
 
-        """
-        r_in = r - 0.5 * self._annulus_width
-        r_out = r + 0.5 * self._annulus_width
-
-        circ_annulus = photutils.CircularAnnulus(
-            (self._xc_stamp, self._yc_stamp), r_in, r_out)
-        circ_aperture = photutils.CircularAperture(
-            (self._xc_stamp, self._yc_stamp), r)
-
-        circ_annulus_mean_flux = _aperture_mean_nomask(
-            circ_annulus, self._cutout_stamp_maskzeroed, method='exact')
-        circ_aperture_mean_flux = _aperture_mean_nomask(
-            circ_aperture, self._cutout_stamp_maskzeroed, method='exact')
-
-        return circ_annulus_mean_flux / circ_aperture_mean_flux - self._eta
-
-    @lazyproperty
-    def rpetro_ellip(self):
+    def _rpetro_ellip_generic(self, center, elongation, theta):
         """
         Compute the Petrosian "radius" (actually the semi-major axis)
         for concentric elliptical apertures.
@@ -484,14 +558,15 @@ class SourceMorphology(object):
 
         """
         # Find appropriate range for root finder
-        da = self._dist_to_closest_corner / 100.0  # step size
-        a = self._annulus_width  # initial value
+        a_inner = self._annulus_width
+        da = (self._dist_to_closest_corner - a_inner) / 100.0  # step size
         a_min, a_max = None, None
+        a = a_inner  # initial value
         while True:
             a += da
             if a > self._dist_to_closest_corner:
                 raise Exception('rpet_ellip not found within range.')
-            curval = self._petrosian_function_ellip(a)
+            curval = self._petrosian_function_ellip(a, center, elongation, theta)
             if curval == 0:
                 print('Warning: we found rpet_ellip by pure chance!')
                 return a
@@ -499,57 +574,27 @@ class SourceMorphology(object):
                 a_min = a
             elif curval < 0:
                 if a_min is None:
+                    print('[rpetro_ellip] Warning: a_min is not defined yet.')
                     self.flag = 1
                 else:
                     a_max = a
                     break
 
-        rpetro_ellip = opt.brentq(self._petrosian_function_ellip,
-                                  a_min, a_max, xtol=1e-6)
-        
+        rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
+                                  args=(center, elongation, theta,), xtol=1e-6)
+
         return rpetro_ellip
 
     @lazyproperty
-    def rpetro_circ(self):
+    def rpetro_ellip(self):
         """
-        Compute the Petrosian radius for concentric circular apertures.
-
-        Notes
-        -----
-        The so-called "curve of growth" is not always monotonic,
-        e.g., when there is a bright, unlabeled and unmasked
-        secondary source in the image, so we cannot just apply a
-        root-finding algorithm over the full interval.
-        Instead, we proceed in two stages: first we do a coarse,
-        brute-force search for an appropriate interval (that
-        contains the root), and then we apply the root-finder.
-
+        Return the elliptical Petrosian "radius", calculated with
+        respect to the point that minimizes the asymmetry.
         """
-        # Find appropriate range for root finder
-        dr = self._dist_to_closest_corner / 100.0  # step size
-        r = self._annulus_width  # initial value
-        r_min, r_max = None, None
-        while True:
-            r += dr
-            if r > self._dist_to_closest_corner:
-                raise Exception('rpet_circ not found within range.')
-            curval = self._petrosian_function_circ(r)
-            if curval == 0:
-                print('Warning: we found rpet_circ by pure chance!')
-                return r
-            elif curval > 0:
-                r_min = r
-            elif curval < 0:
-                if r_min is None:
-                    self.flag = 1
-                else:
-                    r_max = r
-                    break
+        return self._rpetro_ellip_generic(
+            self._asymmetry_center, self._asymmetry_elongation,
+            self._asymmetry_orientation)
 
-        rpetro_circ = opt.brentq(self._petrosian_function_circ,
-                                 r_min, r_max, xtol=1e-6)
-
-        return rpetro_circ
 
     #######################
     # Gini-M20 statistics #
@@ -805,7 +850,7 @@ class SourceMorphology(object):
 
         # Note that aperture is defined for the new coordinates
         if kind == 'cas':
-            r = self._petro_extent_circ * self.rpetro_circ
+            r = self._petro_extent_circ * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
             r_in = self.half_light_radius
@@ -846,6 +891,53 @@ class SourceMorphology(object):
             self.flag = 1
 
         return center_asym
+
+    @lazyproperty
+    def _asymmetry_covariance_matrix(self):
+        """
+        The covariance matrix of a Gaussian function that has the same
+        second-order moments as the source, using ``_asymmetry_center``
+        as the center.
+        """
+        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)  # skimage wants double
+
+        # Calculate moments w.r.t. asymmetry center
+        xc, yc = self._asymmetry_center
+        mc = skimage.measure.moments_central(image, yc, xc, order=3)
+        assert(mc[0, 0] > 0)
+
+        covariance_matrix = np.array([
+            [mc[2, 0], mc[1, 1]],
+            [mc[1, 1], mc[0, 2]]])
+        covariance_matrix /= mc[0, 0]  # normalize
+        
+        return covariance_matrix
+
+    @lazyproperty
+    def _asymmetry_elongation(self):
+        """
+        The elongation of (the Gaussian function that has the same
+        second-order moments as) the source, using ``_asymmetry_center``
+        as the center.
+        """
+        eigvals = np.linalg.eigvals(self._asymmetry_covariance_matrix)
+        eigvals = np.sort(eigvals)[::-1]  # largest first
+        assert(np.all(eigvals > 0))
+        
+        return np.sqrt(eigvals[0]) / np.sqrt(eigvals[1])
+
+    @lazyproperty
+    def _asymmetry_orientation(self):
+        """
+        The orientation (in radians) of the source, using
+        ``_asymmetry_center`` as the center.
+        """
+        A, B, B, C = self._asymmetry_covariance_matrix.flat
+        
+        # This comes from the equation of a rotated ellipse:
+        theta = 0.5 * np.arctan2(2.0 * B, A - C)
+        
+        return theta
 
     @lazyproperty
     def asymmetry(self):
@@ -1343,10 +1435,6 @@ class SourceMorphology(object):
         # Only consider pixels within the segmap.
         rmax = np.max(distances[self._segmap_shape_asym])
         
-        #~ # Yes, this can happen:
-        #~ if rmax <= 1.0:
-            #~ self.flag = 1
-
         return rmax
 
     @lazyproperty
