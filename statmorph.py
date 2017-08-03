@@ -70,13 +70,14 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
     that contains a given fraction of the light within ``r_total``.
     The ``center`` is given as (x,y).
     """
+    flag = 0  # flag=1 indicates a problem
+
     ap_total = photutils.CircularAperture(center, r_total)
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
     if total_sum <= 0:
-        raise Exception('Total flux sum should be positive.')
-
-    flag = 0  # flag=1 indicates a problem
-
+        print('Warning: total flux sum is not positive.')
+        flag = 1
+        return np.nan, flag
 
     # Find appropriate range for root finder
     r_inner = 1.0  # at least one pixel
@@ -312,7 +313,7 @@ class SourceMorphology(object):
         # Make cutout
         ny, nx = self._props._data.shape
         slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist+1)),
-                        slice(max(0, xc-dist), min(nx, xc+dist+1)))
+                       slice(max(0, xc-dist), min(nx, xc+dist+1)))
 
         return slice_stamp
 
@@ -417,6 +418,7 @@ class SourceMorphology(object):
         """
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
+        assert(r_in >= 0)
 
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
         circ_aperture = photutils.CircularAperture(center, r)
@@ -450,7 +452,7 @@ class SourceMorphology(object):
         root-finding algorithm over the full interval.
         Instead, we proceed in two stages: first we do a coarse,
         brute-force search for an appropriate interval (that
-        contains the root), and then we apply the root-finder.
+        contains a root), and then we apply the root-finder.
 
         """
         # Find appropriate range for root finder
@@ -462,6 +464,8 @@ class SourceMorphology(object):
         while True:
             r = r_grid[i]
             if r > r_outer:
+                # Given the choice of the diagonal as the upper limit,
+                # this should never happen:
                 raise Exception('rpet_circ not found within range.')
             curval = self._petrosian_function_circ(r, center)
             if curval == 0:
@@ -515,6 +519,7 @@ class SourceMorphology(object):
         b = a / elongation
         a_in = a - 0.5 * self._annulus_width
         a_out = a + 0.5 * self._annulus_width
+        assert(a_in >= 0)
 
         b_out = a_out / elongation
 
@@ -553,7 +558,7 @@ class SourceMorphology(object):
         root-finding algorithm over the full interval.
         Instead, we proceed in two stages: first we do a coarse,
         brute-force search for an appropriate interval (that
-        contains the root), and then we apply the root-finder.
+        contains a root), and then we apply the root-finder.
 
         """
         # Find appropriate range for root finder
@@ -565,6 +570,8 @@ class SourceMorphology(object):
         while True:
             a = a_grid[i]
             if a > a_outer:
+                # Given the choice of the diagonal as the upper limit,
+                # this should never happen:
                 raise Exception('rpet_ellip not found within range.')
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
             if curval == 0:
@@ -835,11 +842,11 @@ class SourceMorphology(object):
         ny, nx = image.shape
         xc, yc = np.floor(center)
         
-        invalid = 100.0  # high value to keep minimizer within range
         if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
             print('[asym_center] Warning: minimizer tried to exit bounds.')
             self.flag = 1
-            return invalid
+            # Return high value to keep minimizer within range:
+            return 100.0
 
         # Crop to region that can be rotated around center
         dx = min(nx-1-xc, xc)
@@ -858,6 +865,8 @@ class SourceMorphology(object):
             r = self._petro_extent_circ * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
+            if np.isnan(self.half_light_radius):
+                return -99.0  # invalid asymmetry
             r_in = self.half_light_radius
             r_out = self.rmax
             ap = photutils.CircularAnnulus(center, r_in, r_out)
@@ -904,7 +913,10 @@ class SourceMorphology(object):
         second-order moments as the source, using ``_asymmetry_center``
         as the center.
         """
-        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)  # skimage wants double
+        # skimage wants double precision:
+        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
+        # Ignore negative values (otherwise eigvals can be negative):
+        image = np.where(image > 0, image, 0.0)
 
         # Calculate moments w.r.t. asymmetry center
         xc, yc = self._asymmetry_center
@@ -968,7 +980,12 @@ class SourceMorphology(object):
         r_80, flag_80 = _radius_at_fraction_of_total(image, center, r_upper, 0.8)
         self.flag = max(self.flag, flag_20, flag_80)
         
-        return 5.0 * np.log10(r_80 / r_20)
+        if np.isnan(r_20) or np.isnan(r_80):
+            C = -99.0  # invalid
+        else:
+            C = 5.0 * np.log10(r_80 / r_20)
+        
+        return C
 
     @lazyproperty
     def smoothness(self):
@@ -1210,6 +1227,9 @@ class SourceMorphology(object):
                 break
             elif mid_stepsize < 1e-3:
                 print('[M statistic] Warning: Single clump!')
+                # This usually happens when the source is a star,
+                # so we turn on the "bad measurement" flag.
+                self.flag = 1
                 return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
@@ -1340,6 +1360,7 @@ class SourceMorphology(object):
         r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
         self.flag = max(self.flag, flag)
         
+        # In theory, the return value can be NaN
         return r
 
     @lazyproperty
