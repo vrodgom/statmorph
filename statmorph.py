@@ -711,6 +711,9 @@ class SourceMorphology(object):
             variance = np.zeros_like(pixelvals)
         else:
             variance = self._variance[self._slice_stamp]
+            if np.any(variance < 0):
+                print('[sn_per_pixel] Warning: Some negative variance values.')
+                variance = np.abs(variance)
 
         return np.mean(pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
 
@@ -885,6 +888,9 @@ class SourceMorphology(object):
             ap_area = _aperture_area(ap, mask)
             asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
 
+        if not np.isfinite(asym):
+            return -99.0  # invalid
+
         return asym
 
     @lazyproperty
@@ -1005,6 +1011,9 @@ class SourceMorphology(object):
         ap_abs_diff = ap.do_photometry(
             np.abs(image_smooth - image), method='exact')[0][0]
         S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+
+        if not np.isfinite(S):
+            return -99.0  # invalid
 
         return S
 
@@ -1158,7 +1167,7 @@ class SourceMorphology(object):
         For a given quantile ``q``, return the "ratio" (A2/A1)*A2
         multiplied by -1, which is used for minimization.
         """
-        invalid = self._cutout_mid.size  # high "energy" for basin-hopping
+        invalid = np.sum(self._cutout_mid)  # high "energy" for basin-hopping
         if (q < 0) or (q > 1):
             ratio = invalid
         else:
@@ -1338,8 +1347,12 @@ class SourceMorphology(object):
         xc = m[1, 0] / m[0, 0]
 
         area = np.sum(self._segmap_mid)
+        D = np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
 
-        return np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
+        if not np.isfinite(D):
+            return -99.0  # invalid
+
+        return D
 
     ###################
     # SHAPE ASYMMETRY #
