@@ -76,15 +76,16 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
         raise Exception('Total flux sum should be positive.')
 
     flag = 0  # flag=1 indicates a problem
-    r_inner = 1.0  # at least one pixel
-    assert(r_total > r_inner)
+
 
     # Find appropriate range for root finder
-    dr = (r_total - r_inner) / 100.0  # step size
+    r_inner = 1.0  # at least one pixel
+    assert(r_total > r_inner)
+    r_grid = np.logspace(np.log10(r_inner), np.log10(r_total), num=100)
     r_min, r_max = None, None
-    r = r_inner  # initial value
+    i = 0  # initial value
     while True:
-        r += dr
+        r = r_grid[i]
         if r > r_total:
             raise Exception('Root not found within range.')
         curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
@@ -100,6 +101,7 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
             else:
                 r_max = r
                 break
+        i += 1
 
     r = opt.brentq(_fraction_of_total_function, r_min, r_max,
                    args=(image, center, fraction, total_sum), xtol=1e-6)
@@ -396,18 +398,13 @@ class SourceMorphology(object):
         return np.sort(self._cutout_stamp_maskzeroed[~self._mask_stamp_no_bg])
 
     @lazyproperty
-    def _dist_to_closest_corner(self):
+    def _diagonal_distance(self):
         """
-        The distance from the centroid to the closest corner of the
-        original image. This is used as an upper limit when computing
-        the Petrosian radius.
+        Return the diagonal distance (in pixels) of the original image.
+        This is used as an upper bound in some calculations.
         """
         ny, nx = self._props._data.shape
-        yc, xc = self._props.ycentroid.value, self._props.xcentroid.value
-        x_dist = min(xc, nx-xc)
-        y_dist = min(yc, ny-yc)
-
-        return np.sqrt(x_dist**2 + y_dist**2)
+        return float(nx**2 + ny**2)
 
     def _petrosian_function_circ(self, r, center):
         """
@@ -458,12 +455,13 @@ class SourceMorphology(object):
         """
         # Find appropriate range for root finder
         r_inner = self._annulus_width
-        dr = (self._dist_to_closest_corner - r_inner) / 100.0  # step size
+        r_outer = self._diagonal_distance
+        r_grid = np.logspace(np.log10(r_inner), np.log10(r_outer), num=100)
         r_min, r_max = None, None
-        r = r_inner  # initial value
+        i = 0  # initial value
         while True:
-            r += dr
-            if r > self._dist_to_closest_corner:
+            r = r_grid[i]
+            if r > r_outer:
                 raise Exception('rpet_circ not found within range.')
             curval = self._petrosian_function_circ(r, center)
             if curval == 0:
@@ -478,6 +476,7 @@ class SourceMorphology(object):
                 else:
                     r_max = r
                     break
+            i += 1
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ, 
                                  r_min, r_max, args=(center,), xtol=1e-6)
@@ -559,12 +558,13 @@ class SourceMorphology(object):
         """
         # Find appropriate range for root finder
         a_inner = self._annulus_width
-        da = (self._dist_to_closest_corner - a_inner) / 100.0  # step size
+        a_outer = self._diagonal_distance
+        a_grid = np.logspace(np.log10(a_inner), np.log10(a_outer), num=100)
         a_min, a_max = None, None
-        a = a_inner  # initial value
+        i = 0  # initial value
         while True:
-            a += da
-            if a > self._dist_to_closest_corner:
+            a = a_grid[i]
+            if a > a_outer:
                 raise Exception('rpet_ellip not found within range.')
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
             if curval == 0:
@@ -579,6 +579,7 @@ class SourceMorphology(object):
                 else:
                     a_max = a
                     break
+            i += 1
 
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
                                   args=(center, elongation, theta,), xtol=1e-6)
@@ -622,21 +623,18 @@ class SourceMorphology(object):
 
         above_threshold = cutout_smooth >= ellip_annulus_mean_flux
 
+        # Grow regions with 8-connected neighbor "footprint"
+        s = ndi.generate_binary_structure(2, 2)
+        labeled_array, num_features = ndi.label(above_threshold, structure=s)
+
+        # If more than one region, activate the "bad measurement" flag:
+        if num_features > 1:
+            self.flag = 1
+
         if self._contiguous_gini_segmap:
-            # Grow regions with 8-connected neighbor "footprint"
-            s = ndi.generate_binary_structure(2, 2)
-            labeled_array, num_features = ndi.label(above_threshold, structure=s)
-
-            # If more than one region, activate the "bad measurement" flag:
-            if num_features > 1:
-                self.flag = 1
-
-            # Regardless of the "bad measurement" flag, we always keep the
-            # segment that contains the brightest pixel of the smoothed image.
             ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
             if labeled_array[ic, jc] == 0:
                 raise Exception('Brightest pixel is outside the main segment?')
-
             segmap = labeled_array == labeled_array[ic, jc]
 
         else:
@@ -835,9 +833,15 @@ class SourceMorphology(object):
 
         """
         ny, nx = image.shape
+        xc, yc = np.floor(center)
+        
+        invalid = 100.0  # high value to keep minimizer within range
+        if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
+            print('[asym_center] Warning: minimizer tried to exit bounds.')
+            self.flag = 1
+            return invalid
 
         # Crop to region that can be rotated around center
-        xc, yc = np.floor(center)
         dx = min(nx-1-xc, xc)
         dy = min(ny-1-yc, yc)
         xslice = slice(int(xc-dx), int(xc+dx+1))
@@ -845,8 +849,9 @@ class SourceMorphology(object):
         image = image[yslice, xslice]
         image_180 = image[::-1, ::-1]
 
-        # Redefine center
+        # Move to new center
         center = np.array([dx, dy])
+        mask = self._mask_stamp[yslice, xslice]
 
         # Note that aperture is defined for the new coordinates
         if kind == 'cas':
@@ -868,7 +873,7 @@ class SourceMorphology(object):
             # The shape asymmetry of the background is zero
             asym = ap_abs_diff / ap_abs_sum
         else:
-            ap_area = _aperture_area(ap, self._mask_stamp)
+            ap_area = _aperture_area(ap, mask)
             asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
 
         return asym
@@ -887,7 +892,7 @@ class SourceMorphology(object):
         # Print warning if center is masked
         ic, jc = int(center_asym[1]), int(center_asym[0])
         if self._cutout_stamp_maskzeroed[ic, jc] == 0:
-            print('Warning: Asymmetry center is masked.')
+            print('[asym_center] Warning: Asymmetry center is masked.')
             self.flag = 1
 
         return center_asym
