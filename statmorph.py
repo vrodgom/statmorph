@@ -1090,9 +1090,6 @@ class SourceMorphology(object):
         """
         locs_main_clump = self._segmap_mid_main_clump(q)
         
-        #~ if locs_main_clump is None:
-            #~ ratio = 1.0
-
         mean_flux_main_clump = np.mean(
             self._cutout_stamp_maskzeroed_no_bg_nonnegative[locs_main_clump])
         mean_flux_new_pixels = _quantile(
@@ -1105,24 +1102,6 @@ class SourceMorphology(object):
             ratio = mean_flux_new_pixels / mean_flux_main_clump
 
         return ratio - self._eta
-
-    @lazyproperty
-    def _segmap_mid_upper_bound(self):
-        """
-        Another helper function for the MID segmap. This one
-        automatically finds an upper limit for the quantile that
-        determines the MID segmap.
-        """
-        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
-
-        num_bright_pixels = 1  # starting point
-        while num_bright_pixels < num_pixelvals:
-            q = 1.0 - float(num_bright_pixels) / float(num_pixelvals)
-            if self._segmap_mid_main_clump(q) is None:
-                num_bright_pixels = 2 * num_bright_pixels
-            else:
-                return q
-        raise Exception('Should not reach this point.')
 
     @lazyproperty
     def _segmap_mid(self):
@@ -1139,7 +1118,7 @@ class SourceMorphology(object):
 
         # Find appropriate quantile using numerical solver
         q_min = 0.0
-        q_max = self._segmap_mid_upper_bound
+        q_max = 1.0
         xtol = 1.0 / float(num_pixelvals)
         q = opt.brentq(self._segmap_mid_function, q_min, q_max, xtol=xtol)
 
