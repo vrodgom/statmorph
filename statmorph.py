@@ -235,12 +235,16 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._lazy_evaluation = lazy_evaluation
 
+        # Before doing anything, remove "bad pixels" (outliers):
+        self.num_badpixels = -1
+        if self._remove_outliers:
+            image, self.num_badpixels = self._remove_badpixels(image)
+
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
         # The following properties may be modified by other functions:
         self.flag = 0  # attempts to flag bad measurements
-        self.num_badpixels = -1  # records the number of "bad pixels"
 
         # Position of the "postage stamp" cutout:
         self._xmin_stamp = self._slice_stamp[1].start
@@ -293,6 +297,35 @@ class SourceMorphology(object):
         ]
         for q in quantities:
             tmp = self[q]
+
+    def _remove_badpixels(self, image):
+        """
+        Remove outliers (bad pixels) as described in Lotz et al. (2004).
+
+        Notes
+        -----
+        ndi.generic_filter(image, np.std, ...) is too slow,
+        so we do a workaround using ndi.convolve.
+        """
+        # Pixel weights, excluding central pixel.
+        w = np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1]], dtype=np.float64)
+        w = w / np.sum(w)
+        
+        # Use the fact that var(x) = <x^2> - <x>^2.
+        local_mean = ndi.convolve(image, w)
+        local_mean2 = ndi.convolve(image**2, w)
+        local_std = np.sqrt(local_mean2 - local_mean**2)
+
+        # Set "bad pixels" to zero.
+        bad_pixels = (np.abs(image - local_mean) >
+                      self._n_sigma_outlier * local_std)
+        image[bad_pixels] = 0.0
+        num_badpixels = np.sum(bad_pixels)
+
+        return image, num_badpixels
 
     @lazyproperty
     def _slice_stamp(self):
@@ -350,36 +383,9 @@ class SourceMorphology(object):
         by ``_slice_stamp``. Pixels belonging to other sources
         (as well as pixels where ``mask`` == 1) are set to zero,
         but the background is left alone.
-        
-        Optionally, outliers (bad pixels) are also removed here,
-        as described in Lotz et al. (2004).
-
         """
         cutout_stamp = np.where(~self._mask_stamp,
                                 self._props._data[self._slice_stamp], 0.0)
-
-        if self._remove_outliers:
-            # ndi.generic_filter(image, np.std, ...) is too slow,
-            # so we do a workaround using ndi.convolve.
-            
-            # Pixel weights, excluding central pixel.
-            w = np.array([
-                [1, 1, 1],
-                [1, 0, 1],
-                [1, 1, 1]], dtype=np.float64)
-            w = w / np.sum(w)
-            
-            # Use the fact that var(x) = <x^2> - <x>^2.
-            local_mean = ndi.convolve(cutout_stamp, w)
-            local_mean2 = ndi.convolve(cutout_stamp**2, w)
-            local_std = np.sqrt(local_mean2 - local_mean**2)
-
-            # Set "bad pixels" to zero.
-            bad_pixels = (np.abs(cutout_stamp - local_mean) >
-                          self._n_sigma_outlier * local_std)
-            cutout_stamp[bad_pixels] = 0.0
-            self.num_badpixels = np.sum(bad_pixels)
-
         return cutout_stamp
 
     @lazyproperty
@@ -1059,8 +1065,6 @@ class SourceMorphology(object):
         """
         threshold = _quantile(self._sorted_pixelvals_stamp_no_bg_nonnegative, q)
         above_threshold = self._cutout_stamp_maskzeroed_no_bg_nonnegative >= threshold
-        # Note that (zero-)masked values can sometimes be above the threshold
-        above_threshold = above_threshold & (~self._mask_stamp_no_bg)
 
         # Instead of assuming that the main segment is at the center
         # of the stamp, use the position of the brightest pixel:
@@ -1085,6 +1089,9 @@ class SourceMorphology(object):
         the mean of pixels above ``q`` (within the main clump).
         """
         locs_main_clump = self._segmap_mid_main_clump(q)
+        
+        #~ if locs_main_clump is None:
+            #~ ratio = 1.0
 
         mean_flux_main_clump = np.mean(
             self._cutout_stamp_maskzeroed_no_bg_nonnegative[locs_main_clump])
