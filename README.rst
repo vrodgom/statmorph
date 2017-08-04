@@ -99,6 +99,8 @@ properties of the first labeled source.
     quantities = [
         'rpetro_circ',
         'rpetro_ellip',
+        'r_20',
+        'r_80',
         'gini',
         'm20',
         'sn_per_pixel',
@@ -129,6 +131,8 @@ For Pan-STARRS galaxy *J235958.6+281704* in the g-band, this returns:
 
               rpetro_circ:  55.184543    (Time:  0.047625 s)
              rpetro_ellip:  97.532795    (Time:  1.222480 s)
+                     r_20:  11.667072    (Time:  0.014146 s)
+                     r_80:  60.150937    (Time:  0.030301 s)
                      gini:   0.574485    (Time:  0.137494 s)
                       m20:  -1.955428    (Time:  0.027181 s)
              sn_per_pixel:   3.981467    (Time:  0.001153 s)

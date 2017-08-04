@@ -1007,24 +1007,47 @@ class SourceMorphology(object):
         
         return asym
 
-    @lazyproperty
-    def concentration(self):
+    def _radius_at_fraction_of_total_cas(self, fraction):
         """
-        Calculate concentration as described in Lotz et al. (2004).
+        Specialization of ``_radius_at_fraction_of_total`` for
+        the CAS calculations.
         """
         image = self._cutout_stamp_maskzeroed_nonnegative
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
-        r_20, flag_20 = _radius_at_fraction_of_total(image, center, r_upper, 0.2)
-        r_80, flag_80 = _radius_at_fraction_of_total(image, center, r_upper, 0.8)
-        self.flag = max(self.flag, flag_20, flag_80)
+        r, flag = _radius_at_fraction_of_total(image, center, r_upper, fraction)
+        self.flag = max(self.flag, flag)
         
-        if np.isnan(r_20) or np.isnan(r_80):
+        if np.isnan(r) or (r <= 0.0):
             self.flag = 1
+            r = -99.0  # invalid
+        
+        return r
+
+    @lazyproperty
+    def r_20(self):
+        """
+        The radius that contains 20% of the light.
+        """
+        return self._radius_at_fraction_of_total_cas(0.2)
+
+    @lazyproperty
+    def r_80(self):
+        """
+        The radius that contains 80% of the light.
+        """
+        return self._radius_at_fraction_of_total_cas(0.8)
+
+    @lazyproperty
+    def concentration(self):
+        """
+        Calculate concentration as described in Lotz et al. (2004).
+        """
+        if (self.r_20 == -99.0) or (self.r_80 == -99.0):
             C = -99.0  # invalid
         else:
-            C = 5.0 * np.log10(r_80 / r_20)
+            C = 5.0 * np.log10(self.r_80 / self.r_20)
         
         return C
 
