@@ -80,15 +80,16 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
         return np.nan, flag
 
     # Find appropriate range for root finder
+    npoints = 100
     r_inner = 1.0  # at least one pixel
     assert(r_total > r_inner)
-    r_grid = np.logspace(np.log10(r_inner), np.log10(r_total), num=100)
+    r_grid = np.logspace(np.log10(r_inner), np.log10(r_total), num=npoints)
     r_min, r_max = None, None
     i = 0  # initial value
     while True:
-        r = r_grid[i]
-        if r > r_total:
+        if i >= npoints:
             raise Exception('Root not found within range.')
+        r = r_grid[i]
         curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
         if curval == 0:
             print('Warning: found root by pure chance!')
@@ -211,7 +212,7 @@ class SourceMorphology(object):
                  cutout_extent=1.5, remove_outliers=True, n_sigma_outlier=10,
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
                  contiguous_gini_segmap=False,
-                 border_size=4, skybox_size=64, petro_extent_circ=1.5,
+                 border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
                  boxcar_size_shape_asym=3.0, lazy_evaluation=False):
@@ -399,6 +400,24 @@ class SourceMorphology(object):
         return np.sort(self._cutout_stamp_maskzeroed[~self._mask_stamp_no_bg])
 
     @lazyproperty
+    def _cutout_stamp_maskzeroed_no_bg_nonnegative(self):
+        """
+        Same as ``_cutout_stamp_maskzeroed_no_bg``, but masking
+        negative pixels.
+        """
+        image = self._cutout_stamp_maskzeroed_no_bg
+        return np.where(image > 0, image, 0.0)
+
+    @lazyproperty
+    def _sorted_pixelvals_stamp_no_bg_nonnegative(self):
+        """
+        Same as ``_sorted_pixelvals_stamp_no_bg``, but masking
+        negative pixels.
+        """
+        image = self._cutout_stamp_maskzeroed_no_bg_nonnegative
+        return np.sort(image[~self._mask_stamp_no_bg])
+
+    @lazyproperty
     def _diagonal_distance(self):
         """
         Return the diagonal distance (in pixels) of the original image.
@@ -460,13 +479,12 @@ class SourceMorphology(object):
         r_outer = self._diagonal_distance
         r_grid = np.logspace(np.log10(r_inner), np.log10(r_outer), num=100)
         r_min, r_max = None, None
+        npoints = 100
         i = 0  # initial value
         while True:
-            r = r_grid[i]
-            if r > r_outer:
-                # Given the choice of the diagonal as the upper limit,
-                # this should never happen:
+            if i >= npoints:
                 raise Exception('rpet_circ not found within range.')
+            r = r_grid[i]
             curval = self._petrosian_function_circ(r, center)
             if curval == 0:
                 print('Warning: we found rpet_circ by pure chance!')
@@ -567,12 +585,11 @@ class SourceMorphology(object):
         a_grid = np.logspace(np.log10(a_inner), np.log10(a_outer), num=100)
         a_min, a_max = None, None
         i = 0  # initial value
+        npoints = 100
         while True:
-            a = a_grid[i]
-            if a > a_outer:
-                # Given the choice of the diagonal as the upper limit,
-                # this should never happen:
+            if i >= npoints:
                 raise Exception('rpet_ellip not found within range.')
+            a = a_grid[i]
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
             if curval == 0:
                 print('Warning: we found rpet_ellip by pure chance!')
@@ -868,12 +885,16 @@ class SourceMorphology(object):
             r = self._petro_extent_circ * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
-            if np.isnan(self.half_light_radius):
-                return -99.0  # invalid asymmetry
             r_in = self.half_light_radius
             r_out = self.rmax
+            if np.isnan(r_in) or np.isnan(r_out) or (r_in <= 0) or (r_out <= 0):
+                self.flag = 1
+                return -99.0  # invalid
             ap = photutils.CircularAnnulus(center, r_in, r_out)
         elif kind == 'shape':
+            if np.isnan(self.rmax) or (self.rmax <= 0):
+                self.flag = 1
+                return -99.0  # invalid
             ap = photutils.CircularAperture(center, self.rmax)
         else:
             raise Exception('Asymmetry kind not understood:', kind)
@@ -881,15 +902,17 @@ class SourceMorphology(object):
         # Apply eq. 10 from Lotz et al. (2004)
         ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
+
+        if ap_abs_sum == 0.0:
+            self.flag = 1
+            return -99.0  # invalid
+
         if kind == 'shape':
             # The shape asymmetry of the background is zero
             asym = ap_abs_diff / ap_abs_sum
         else:
             ap_area = _aperture_area(ap, mask)
             asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
-
-        if not np.isfinite(asym):
-            return -99.0  # invalid
 
         return asym
 
@@ -987,6 +1010,7 @@ class SourceMorphology(object):
         self.flag = max(self.flag, flag_20, flag_80)
         
         if np.isnan(r_20) or np.isnan(r_80):
+            self.flag = 1
             C = -99.0  # invalid
         else:
             C = 5.0 * np.log10(r_80 / r_20)
@@ -1013,6 +1037,7 @@ class SourceMorphology(object):
         S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
 
         if not np.isfinite(S):
+            self.flag = 1
             return -99.0  # invalid
 
         return S
@@ -1027,22 +1052,22 @@ class SourceMorphology(object):
         the locations of pixels above ``q`` (within the original segment)
         that are also part of the "main" clump.
         """
-        threshold = _quantile(self._sorted_pixelvals_stamp_no_bg, q)
-        above_threshold = ((self._cutout_stamp_maskzeroed >= threshold) &
-                           (~self._mask_stamp_no_bg))
+        threshold = _quantile(self._sorted_pixelvals_stamp_no_bg_nonnegative, q)
+        above_threshold = self._cutout_stamp_maskzeroed_no_bg_nonnegative >= threshold
+        # Note that (zero-)masked values can sometimes be above the threshold
+        above_threshold = above_threshold & (~self._mask_stamp_no_bg)
 
         # Instead of assuming that the main segment is at the center
         # of the stamp, use the position of the brightest pixel:
         ic = int(self._y_maxval_stamp)
         jc = int(self._x_maxval_stamp)
 
-        # Neighbor "footprint" for growing regions, including corners:
+        # Grow regions using 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
-
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
-        if labeled_array[ic, jc] == 0:
-            # Brightest pixel is not part of the main clump.
-            return None
+
+        # Sanity check (brightest pixel should be part of the main clump):
+        assert(labeled_array[ic, jc] != 0)
 
         return labeled_array == labeled_array[ic, jc]
 
@@ -1055,13 +1080,16 @@ class SourceMorphology(object):
         the mean of pixels above ``q`` (within the main clump).
         """
         locs_main_clump = self._segmap_mid_main_clump(q)
-        if locs_main_clump is None:
+
+        mean_flux_main_clump = np.mean(
+            self._cutout_stamp_maskzeroed_no_bg_nonnegative[locs_main_clump])
+        mean_flux_new_pixels = _quantile(
+            self._sorted_pixelvals_stamp_no_bg_nonnegative, q)
+
+        if mean_flux_main_clump == 0:
             ratio = 1.0
+            self.flag = 1
         else:
-            mean_flux_main_clump = np.mean(
-                self._cutout_stamp_maskzeroed[locs_main_clump])
-            mean_flux_new_pixels = _quantile(
-                self._sorted_pixelvals_stamp_no_bg, q)
             ratio = mean_flux_new_pixels / mean_flux_main_clump
 
         return ratio - self._eta
@@ -1073,9 +1101,9 @@ class SourceMorphology(object):
         automatically finds an upper limit for the quantile that
         determines the MID segmap.
         """
-        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg)
+        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
 
-        num_bright_pixels = 2  # starting point
+        num_bright_pixels = 1  # starting point
         while num_bright_pixels < num_pixelvals:
             q = 1.0 - float(num_bright_pixels) / float(num_pixelvals)
             if self._segmap_mid_main_clump(q) is None:
@@ -1095,7 +1123,7 @@ class SourceMorphology(object):
         This implementation is independent of the number of quantiles
         used in the calculation, as well as other parameters.
         """
-        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg)
+        num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
 
         # Find appropriate quantile using numerical solver
         q_min = 0.0
@@ -1131,8 +1159,7 @@ class SourceMorphology(object):
         and set negative pixels to zero.
         """
         image = np.where(self._segmap_mid,
-                         self._cutout_stamp_maskzeroed, 0.0)
-        image[image < 0] = 0.0
+                         self._cutout_stamp_maskzeroed_no_bg_nonnegative, 0.0)
         return image
 
     @lazyproperty
@@ -1140,7 +1167,8 @@ class SourceMorphology(object):
         """
         Just the sorted pixel values of the MID cutout.
         """
-        return np.sort(self._cutout_mid.flatten())
+        image = self._cutout_mid
+        return np.sort(image[~self._mask_stamp_no_bg])
 
     def _multimode_function(self, q):
         """
@@ -1350,6 +1378,7 @@ class SourceMorphology(object):
         D = np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
 
         if not np.isfinite(D):
+            self.flag = 1
             return -99.0  # invalid
 
         return D
@@ -1370,10 +1399,13 @@ class SourceMorphology(object):
         # Center at brightest pixel
         center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
         
-        r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
-        self.flag = max(self.flag, flag)
+        if self.rmax == 0:
+            r = 0.0
+        else:
+            r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+            self.flag = max(self.flag, flag)
         
-        # In theory, the return value can be NaN
+        # In theory, the return value can also be NaN
         return r
 
     @lazyproperty
@@ -1474,6 +1506,11 @@ class SourceMorphology(object):
         # Only consider pixels within the segmap.
         rmax = np.max(distances[self._segmap_shape_asym])
         
+        if rmax < 1:
+            assert(rmax == 0)  # this should be the only possibility
+            print('[rmax] Warning: rmax = %g' % (rmax))
+            self.flag = 1
+        
         return rmax
 
     @lazyproperty
@@ -1489,8 +1526,6 @@ class SourceMorphology(object):
         
         center_asym = opt.fmin(self._asymmetry_function, center_0,
                                args=(image, 'outer'), xtol=1e-6, disp=0)
-
-
 
         return center_asym
 
