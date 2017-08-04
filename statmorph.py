@@ -703,6 +703,11 @@ class SourceMorphology(object):
         # Use the same region as in the Gini calculation
         image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
+        
+        # Take absolute value of image (setting the negative pixels to
+        # zero should also work, but this seems a bit more consistent
+        # with the Gini calculation).
+        image = np.abs(image)
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
@@ -723,8 +728,10 @@ class SourceMorphology(object):
         mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=3)
         second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
 
-        # Normalize
-        m20 = np.log10(second_moment_20 / second_moment)
+        if second_moment == 0:
+            m20 = -99.0  # invalid
+        else:
+            m20 = np.log10(second_moment_20 / second_moment)
 
         return m20
 
