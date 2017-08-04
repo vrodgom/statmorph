@@ -383,6 +383,15 @@ class SourceMorphology(object):
         return cutout_stamp
 
     @lazyproperty
+    def _cutout_stamp_maskzeroed_nonnegative(self):
+        """
+        Same as ``_cutout_stamp_maskzeroed``, but masking
+        negative pixels.
+        """
+        image = self._cutout_stamp_maskzeroed
+        return np.where(image > 0, image, 0.0)
+
+    @lazyproperty
     def _cutout_stamp_maskzeroed_no_bg(self):
         """
         Like ``_cutout_stamp_maskzeroed``, but also mask the
@@ -435,6 +444,8 @@ class SourceMorphology(object):
         circle, minus "eta" (eq. 4 from Lotz et al. 2004). The root
         of this function is the Petrosian radius.
         """
+        image = self._cutout_stamp_maskzeroed_nonnegative
+
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
         assert(r_in >= 0)
@@ -443,13 +454,9 @@ class SourceMorphology(object):
         circ_aperture = photutils.CircularAperture(center, r)
 
         circ_annulus_mean_flux = _aperture_mean_nomask(
-            circ_annulus, self._cutout_stamp_maskzeroed, method='exact')
+            circ_annulus, image, method='exact')
         circ_aperture_mean_flux = _aperture_mean_nomask(
-            circ_aperture, self._cutout_stamp_maskzeroed, method='exact')
-        
-        # Just in case:
-        circ_annulus_mean_flux = np.abs(circ_annulus_mean_flux)
-        circ_aperture_mean_flux = np.abs(circ_aperture_mean_flux)
+            circ_aperture, image, method='exact')
         
         if circ_aperture_mean_flux == 0:
             ratio = 1.0
@@ -534,6 +541,8 @@ class SourceMorphology(object):
         this function is the Petrosian "radius".
         
         """
+        image = self._cutout_stamp_maskzeroed_nonnegative
+
         b = a / elongation
         a_in = a - 0.5 * self._annulus_width
         a_out = a + 0.5 * self._annulus_width
@@ -547,13 +556,9 @@ class SourceMorphology(object):
             center, a, b, theta)
 
         ellip_annulus_mean_flux = _aperture_mean_nomask(
-            ellip_annulus, self._cutout_stamp_maskzeroed, method='exact')
+            ellip_annulus, image, method='exact')
         ellip_aperture_mean_flux = _aperture_mean_nomask(
-            ellip_aperture, self._cutout_stamp_maskzeroed, method='exact')
-
-        # Just in case:
-        ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
-        ellip_aperture_mean_flux = np.abs(ellip_aperture_mean_flux)
+            ellip_aperture, image, method='exact')
 
         if ellip_aperture_mean_flux == 0:
             ratio = 1.0
@@ -1001,7 +1006,7 @@ class SourceMorphology(object):
         """
         Calculate concentration as described in Lotz et al. (2004).
         """
-        image = self._cutout_stamp_maskzeroed
+        image = self._cutout_stamp_maskzeroed_nonnegative
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
@@ -1394,7 +1399,7 @@ class SourceMorphology(object):
         assuming that the center is at the brightest pixel and the total
         is at ``rmax`` (Pawlik et al. 2016).
         """
-        image = self._cutout_stamp_maskzeroed
+        image = self._cutout_stamp_maskzeroed_nonnegative
         
         # Center at brightest pixel
         center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
