@@ -1344,6 +1344,9 @@ class SourceMorphology(object):
         """
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
         if len(sorted_flux_sums) <= 1:
+            # As in the M=0 cases, this usually happens when the source
+            # is a star, so we turn on the "bad measurement" flag.
+            self.flag = 1
             return 0.0
         else:
             return sorted_flux_sums[1] / sorted_flux_sums[0]
