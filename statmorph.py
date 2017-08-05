@@ -661,6 +661,14 @@ class SourceMorphology(object):
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
+        
+        # In some rare cases (e.g., the disastrous J020218.5+672123_g.fits.gz),
+        # this results in an empty segmap, so there is nothing to do.
+        if num_features == 0:
+            print('[segmap_gini] Warning: empty Gini segmap!')
+            self.flag = 1
+            assert(np.sum(above_threshold) == 0)  # sanity check
+            return above_threshold
 
         # If more than one region, activate the "bad measurement" flag:
         if num_features > 1:
@@ -683,6 +691,9 @@ class SourceMorphology(object):
         """
         Calculate the Gini coefficient as described in Lotz et al. (2004).
         """
+        if np.sum(self._segmap_gini) == 0:
+            return -99.0  # invalid
+
         image = self._cutout_stamp_maskzeroed.flatten()
         segmap = self._segmap_gini.flatten()
 
@@ -700,6 +711,9 @@ class SourceMorphology(object):
         """
         Calculate the M_20 coefficient as described in Lotz et al. (2004).
         """
+        if np.sum(self._segmap_gini) == 0:
+            return -99.0  # invalid
+
         # Use the same region as in the Gini calculation
         image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
@@ -740,6 +754,9 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
+        if np.sum(self._segmap_gini) == 0:
+            return -99.0  # invalid
+
         locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
         pixelvals = self._cutout_stamp_maskzeroed[locs]
         if self._variance is None:
