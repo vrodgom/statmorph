@@ -81,7 +81,8 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
 
     # Find appropriate range for root finder
     npoints = 100
-    r_inner = 1.0  # at least one pixel
+    r_inner = 0.5  # just the central pixel
+
     assert(r_total > r_inner)
     r_grid = np.logspace(np.log10(r_inner), np.log10(r_total), num=npoints)
     r_min, r_max = None, None
@@ -1437,9 +1438,9 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed_nonnegative
         
-        # Center at brightest pixel
-        center = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
-        
+        # Center at (center of) brightest pixel
+        center = np.array([self._x_maxval_stamp, self._y_maxval_stamp]) + 0.5
+
         if self.rmax == 0:
             r = 0.0
         else:
