@@ -29,13 +29,13 @@ def _quantile(sorted_values, q):
     else:
         return sorted_values[int(q*len(sorted_values))]
 
-def _mode(a):
+def _mode(a, axis=None):
     """
     Takes a masked array as input and returns the "mode"
     as defined in Bertin & Arnouts (1996):
     mode = 2.5 * median - 1.5 * mean
     """
-    return 2.5 * np.ma.median(a) - 1.5 * np.ma.mean(a)
+    return 2.5*np.ma.median(a, axis=axis) - 1.5*np.ma.mean(a, axis=axis)
 
 def _aperture_area(ap, mask, **kwargs):
     """
@@ -71,6 +71,9 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
     The ``center`` is given as (x,y).
     """
     flag = 0  # flag=1 indicates a problem
+
+    # Make sure that center is at center of pixel
+    center = np.floor(center) + 0.5
 
     ap_total = photutils.CircularAperture(center, r_total)
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
