@@ -1162,11 +1162,25 @@ class SourceMorphology(object):
         
         Notes
         -----
-        This implementation is independent of the number of quantiles
+        This implementation improves upon previous ones by making
+        the MID segmap independent from the number of quantiles
         used in the calculation, as well as other parameters.
         """
         num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
-
+        
+        # In some rare cases (as a consequence of an erroneous
+        # initial segmap, as in J095553.0+694048_g.fits.gz),
+        # the MID segmap is technically undefined because the
+        # mean flux of "newly added" pixels never reaches the
+        # target value, at least within the original segmap.
+        # In these cases we simply assume that the MID segmap
+        # is the original segmap (and turn the "bad measurement"
+        # flag on).
+        if self._segmap_mid_function(0.0) > 0.0:
+            self.flag = 1
+            print('[segmap_mid] Warning: using original segmap.')
+            return ~self._mask_stamp_no_bg
+        
         # Find appropriate quantile using numerical solver
         q_min = 0.0
         q_max = 1.0
