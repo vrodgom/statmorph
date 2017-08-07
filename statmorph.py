@@ -721,11 +721,9 @@ class SourceMorphology(object):
         # Use the same region as in the Gini calculation
         image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
-        
-        # Take absolute value of image (setting the negative pixels to
-        # zero should also work, but this seems a bit more consistent
-        # with the Gini calculation).
-        image = np.abs(image)
+
+        # Ignore negative pixels
+        image = np.where(image > 0.0, image, 0.0)
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
@@ -739,7 +737,12 @@ class SourceMorphology(object):
         # Calculate threshold pixel value
         sorted_pixelvals = np.sort(image.flatten())
         flux_fraction = np.cumsum(sorted_pixelvals) / np.sum(sorted_pixelvals)
-        threshold = sorted_pixelvals[flux_fraction >= 0.8][0]
+        sorted_pixelvals_20 = sorted_pixelvals[flux_fraction >= 0.8]
+        if len(sorted_pixelvals_20) == 0:
+            # This can happen when there are very few pixels.
+            self.flag = 1
+            return -99.0  # invalid
+        threshold = sorted_pixelvals_20[0]
 
         # Calculate second moment of the brightest pixels
         image_20 = np.where(image >= threshold, image, 0.0)
