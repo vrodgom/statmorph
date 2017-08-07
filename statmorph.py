@@ -774,7 +774,11 @@ class SourceMorphology(object):
                 print('[sn_per_pixel] Warning: Some negative variance values.')
                 variance = np.abs(variance)
 
-        return np.mean(pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
+        if not np.isfinite(self._sky_sigma):
+            return -99.0  # invalid
+
+        return np.mean(
+            pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
 
     ##################
     # CAS statistics #
@@ -789,11 +793,18 @@ class SourceMorphology(object):
         (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
         segmap = self._props._segment_img.data[self._slice_stamp]
+        ny, nx = segmap.shape
         mask = np.zeros(segmap.shape, dtype=np.bool8)
         if self._props._mask is not None:
             mask = self._props._mask[self._slice_stamp]
 
-        ny, nx = segmap.shape
+        # If segmap is smaller than borders, there is nothing to do.
+        # This will result in NaN values for skybox calculations.
+        if (nx < 2 * self._border_size) or (ny < 2 * self._border_size):
+            self.flag = 1
+            print('[skybox] Warning: original segmap is too small.')
+            return (slice(0, 0), slice(0, 0))
+
         while True:
             for i in range(self._border_size,
                            ny - self._border_size - self._skybox_size):
@@ -823,39 +834,59 @@ class SourceMorphology(object):
     @lazyproperty
     def _sky_mean(self):
         """
-        Mean background value.
+        Mean background value. Can be NaN when there is no skybox.
         """
-        return np.mean(self._cutout_stamp_maskzeroed[self._slice_skybox])
+        bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
+        if bkg.size == 0:
+            return np.nan
+
+        return np.mean(bkg)
 
     @lazyproperty
     def _sky_median(self):
         """
-        Median background value.
+        Median background value. Can be NaN when there is no skybox.
         """
-        return np.median(self._cutout_stamp_maskzeroed[self._slice_skybox])
+        bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
+        if bkg.size == 0:
+            return np.nan
+
+        return np.median(bkg)
 
     @lazyproperty
     def _sky_sigma(self):
         """
-        Standard deviation of the background.
+        Standard deviation of the background. Can be NaN when there
+        is no skybox.
         """
-        return np.std(self._cutout_stamp_maskzeroed[self._slice_skybox])
+        bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
+        if bkg.size == 0:
+            return np.nan
+
+        return np.std(bkg)
 
     @lazyproperty
     def _sky_asymmetry(self):
         """
-        Asymmetry of the background. Note the peculiar normalization.
+        Asymmetry of the background. Can be NaN when there is no
+        skybox. Note the peculiar normalization.
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         bkg_180 = bkg[::-1, ::-1]
+        if bkg.size == 0:
+            return np.nan
+
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
 
     @lazyproperty
     def _sky_smoothness(self):
         """
-        Smoothness of the background. Note the peculiar normalization.
+        Smoothness of the background. Can be NaN when there is
+        no skybox. Note the peculiar normalization.
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
+        if bkg.size == 0:
+            return np.nan
 
         # If the smoothing "boxcar" is larger than the skybox itself,
         # this just sets all values equal to the mean:
@@ -953,9 +984,12 @@ class SourceMorphology(object):
             # The shape asymmetry of the background is zero
             asym = ap_abs_diff / ap_abs_sum
         else:
-            ap_area = _aperture_area(ap, mask)
-            asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
-
+            if np.isfinite(self._sky_asymmetry):
+                ap_area = _aperture_area(ap, mask)
+                asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
+            else:
+                asym = ap_abs_diff / ap_abs_sum
+                
         return asym
 
     @lazyproperty
@@ -978,7 +1012,7 @@ class SourceMorphology(object):
         return center_asym
 
     @lazyproperty
-    def _asymmetry_covariance_matrix(self):
+    def _asymmetry_covariance(self):
         """
         The covariance matrix of a Gaussian function that has the same
         second-order moments as the source, using ``_asymmetry_center``
@@ -994,12 +1028,17 @@ class SourceMorphology(object):
         mc = skimage.measure.moments_central(image, yc, xc, order=3)
         assert(mc[0, 0] > 0)
 
-        covariance_matrix = np.array([
+        covariance = np.array([
             [mc[2, 0], mc[1, 1]],
             [mc[1, 1], mc[0, 2]]])
-        covariance_matrix /= mc[0, 0]  # normalize
+        covariance /= mc[0, 0]  # normalize
         
-        return covariance_matrix
+        # This checks the covariance matrix and modifies it in the
+        # case of "infinitely thin" sources by iteratively increasing
+        # the diagonal elements:
+        covariance = self._props._check_covariance(covariance)
+        
+        return covariance
 
     @lazyproperty
     def _asymmetry_elongation(self):
@@ -1008,7 +1047,7 @@ class SourceMorphology(object):
         second-order moments as) the source, using ``_asymmetry_center``
         as the center.
         """
-        eigvals = np.linalg.eigvals(self._asymmetry_covariance_matrix)
+        eigvals = np.linalg.eigvals(self._asymmetry_covariance)
         eigvals = np.sort(eigvals)[::-1]  # largest first
         assert(np.all(eigvals > 0))
         
@@ -1020,7 +1059,7 @@ class SourceMorphology(object):
         The orientation (in radians) of the source, using
         ``_asymmetry_center`` as the center.
         """
-        A, B, B, C = self._asymmetry_covariance_matrix.flat
+        A, B, B, C = self._asymmetry_covariance.flat
         
         # This comes from the equation of a rotated ellipse:
         theta = 0.5 * np.arctan2(2.0 * B, A - C)
@@ -1099,7 +1138,10 @@ class SourceMorphology(object):
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(
             np.abs(image_smooth - image), method='exact')[0][0]
-        S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+        if np.isfinite(self._sky_smoothness):
+            S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+        else:
+            S = -99.0  # invalid
 
         if not np.isfinite(S):
             self.flag = 1
@@ -1428,6 +1470,11 @@ class SourceMorphology(object):
         image = np.float64(self._cutout_mid)  # skimage wants double
         
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
+        if len(sorted_flux_sums) == 0:
+            print('[deviation] Warning: There are no peaks')
+            self.flag = 1
+            return -99.0  # invalid
+
         xp = sorted_xpeak[0] + 0.5  # center of pixel
         yp = sorted_ypeak[0] + 0.5
         
@@ -1507,12 +1554,17 @@ class SourceMorphology(object):
         # Invert mask and exclude other sources
         total_mask = self._mask_stamp | np.logical_not(circ_annulus_mask)
 
-        # If sky area is too small (e.g., if annulus is outside the image),
-        # use skybox instead.
+        # If sky area is too small (e.g., if annulus is outside the
+        # image), use skybox instead.
         if np.sum(~total_mask) < self._skybox_size**2:
             print('[shape_asym] Warning: using skybox for background.')
             total_mask = np.ones((ny, nx), dtype=np.bool8)
             total_mask[self._slice_skybox] = False
+            # However, if skybox is undefined, there is nothing to do.
+            if np.sum(~total_mask) == 0:
+                print('[shape_asym] Warning: asymmetry segmap undefined.')
+                self.flag = 1
+                return ~self._mask_stamp_no_bg
 
         # Do sigma-clipping -- 5 iterations should be enough
         mean, median, std = sigma_clipped_stats(
