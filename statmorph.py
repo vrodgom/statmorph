@@ -689,21 +689,20 @@ class SourceMorphology(object):
         
         return segmap
 
-
     @lazyproperty
     def gini(self):
         """
         Calculate the Gini coefficient as described in Lotz et al. (2004).
         """
-        if np.sum(self._segmap_gini) == 0:
-            return -99.0  # invalid
-
         image = self._cutout_stamp_maskzeroed.flatten()
         segmap = self._segmap_gini.flatten()
 
         sorted_pixelvals = np.sort(np.abs(image[segmap]))
-
         n = len(sorted_pixelvals)
+        if n <= 1:
+            self.flag = 1
+            return -99.0  # invalid
+        
         indices = np.arange(1, n+1)  # start at i=1
         gini = (np.sum((2*indices-n-1) * sorted_pixelvals) /
                 (float(n-1) * np.sum(sorted_pixelvals)))
@@ -761,9 +760,6 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
-        if np.sum(self._segmap_gini) == 0:
-            return -99.0  # invalid
-
         locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
         pixelvals = self._cutout_stamp_maskzeroed[locs]
         if self._variance is None:
@@ -774,11 +770,13 @@ class SourceMorphology(object):
                 print('[sn_per_pixel] Warning: Some negative variance values.')
                 variance = np.abs(variance)
 
-        if not np.isfinite(self._sky_sigma):
-            return -99.0  # invalid
-
-        return np.mean(
+        snp = np.mean(
             pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
+        if not np.isfinite(snp):
+            self.flag = 1
+            snp = -99.0  # invalid
+
+        return snp
 
     ##################
     # CAS statistics #
