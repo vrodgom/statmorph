@@ -168,7 +168,8 @@ Citing
 If you use this code for scientific publication, please cite
 the package using its Zenodo record:
 
-- T.B.D.
+.. image:: https://zenodo.org/badge/95412529.svg
+   :target: https://zenodo.org/badge/latestdoi/95412529
 
 In addition, below we provide some of the main references that should
 be cited when using each of the morphological parameters. This list is
