@@ -1452,9 +1452,8 @@ class SourceMorphology(object):
         """
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
         if len(sorted_flux_sums) <= 1:
-            # As in the M=0 cases, this usually happens when the source
-            # is a star, so we turn on the "bad measurement" flag.
-            self.flag = 1
+            # Unlike the M=0 cases, there seem to be some legitimate
+            # I=0 cases, so we do not turn on the "bad measurement" flag.
             return 0.0
         else:
             return sorted_flux_sums[1] / sorted_flux_sums[0]
@@ -1564,10 +1563,10 @@ class SourceMorphology(object):
                 self.flag = 1
                 return ~self._mask_stamp_no_bg
 
-        # Do sigma-clipping -- 5 iterations should be enough
+        # Do sigma-clipping until convergence
         mean, median, std = sigma_clipped_stats(
-            self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0, iters=5,
-            cenfunc=_mode)
+            self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0,
+            iters=None, cenfunc=_mode)
 
         # Mode as defined in Bertin & Arnouts (1996)
         mode = 2.5*median - 1.5*mean
