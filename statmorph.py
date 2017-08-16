@@ -699,7 +699,7 @@ class SourceMorphology(object):
 
         sorted_pixelvals = np.sort(np.abs(image[segmap]))
         n = len(sorted_pixelvals)
-        if n <= 1:
+        if n <= 1 or np.sum(sorted_pixelvals) == 0:
             self.flag = 1
             return -99.0  # invalid
         
