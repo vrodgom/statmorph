@@ -239,7 +239,18 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._lazy_evaluation = lazy_evaluation
 
-        # Before doing anything, remove "bad pixels" (outliers):
+        # If there are nan or inf values, set them to zero and
+        # add them to the mask.
+        locs_invalid = ~np.isfinite(image)
+        if variance is not None:
+            locs_invalid = locs_invalid | ~np.isfinite(variance)
+        image[locs_invalid] = 0.0
+        variance[locs_invalid] = 0.0
+        if mask is None:
+            mask = np.zeros(image.shape, dtype=np.bool8)
+        mask = mask | locs_invalid
+
+        # Before doing anything else, remove "bad pixels" (outliers):
         self.num_badpixels = -1
         if self._remove_outliers:
             image, self.num_badpixels = self._remove_badpixels(image)
