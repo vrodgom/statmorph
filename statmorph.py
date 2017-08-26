@@ -60,7 +60,8 @@ def _fraction_of_total_function(r, image, center, fraction, total_sum):
     Helper function to calculate ``_radius_at_fraction_of_total``.
     """
     ap = photutils.CircularAperture(center, r)
-    ap_sum = ap.do_photometry(image, method='exact')[0][0]
+    # Force flux sum to be positive:
+    ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
 
     return ap_sum / total_sum - fraction
 
@@ -76,7 +77,8 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
     center = np.floor(center) + 0.5
 
     ap_total = photutils.CircularAperture(center, r_total)
-    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    # Force flux sum to be positive:
+    total_sum = np.abs(ap_total.do_photometry(image, method='exact')[0][0])
     if total_sum <= 0:
         print('Warning: total flux sum is not positive.')
         flag = 1
@@ -87,7 +89,7 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
     r_inner = 0.5  # just the central pixel
 
     assert(r_total > r_inner)
-    r_grid = np.logspace(np.log10(r_inner), np.log10(r_total), num=npoints)
+    r_grid = np.linspace(r_inner, r_total, num=npoints)
     r_min, r_max = None, None
     i = 0  # initial value
     while True:
@@ -244,8 +246,8 @@ class SourceMorphology(object):
         locs_invalid = ~np.isfinite(image)
         if variance is not None:
             locs_invalid = locs_invalid | ~np.isfinite(variance)
+            variance[locs_invalid] = 0.0
         image[locs_invalid] = 0.0
-        variance[locs_invalid] = 0.0
         if mask is None:
             mask = np.zeros(image.shape, dtype=np.bool8)
         mask = mask | locs_invalid
@@ -404,15 +406,6 @@ class SourceMorphology(object):
         return cutout_stamp
 
     @lazyproperty
-    def _cutout_stamp_maskzeroed_nonnegative(self):
-        """
-        Same as ``_cutout_stamp_maskzeroed``, but masking
-        negative pixels.
-        """
-        image = self._cutout_stamp_maskzeroed
-        return np.where(image > 0, image, 0.0)
-
-    @lazyproperty
     def _cutout_stamp_maskzeroed_no_bg(self):
         """
         Like ``_cutout_stamp_maskzeroed``, but also mask the
@@ -450,11 +443,11 @@ class SourceMorphology(object):
     @lazyproperty
     def _diagonal_distance(self):
         """
-        Return the diagonal distance (in pixels) of the original image.
+        Return the diagonal distance (in pixels) of the postage stamp.
         This is used as an upper bound in some calculations.
         """
-        ny, nx = self._props._data.shape
-        return float(nx**2 + ny**2)
+        ny, nx = self._cutout_stamp_maskzeroed.shape
+        return np.sqrt(nx**2 + ny**2)
 
     def _petrosian_function_circ(self, r, center):
         """
@@ -465,7 +458,7 @@ class SourceMorphology(object):
         circle, minus "eta" (eq. 4 from Lotz et al. 2004). The root
         of this function is the Petrosian radius.
         """
-        image = self._cutout_stamp_maskzeroed_nonnegative
+        image = self._cutout_stamp_maskzeroed
 
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
@@ -474,10 +467,11 @@ class SourceMorphology(object):
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
         circ_aperture = photutils.CircularAperture(center, r)
 
-        circ_annulus_mean_flux = _aperture_mean_nomask(
-            circ_annulus, image, method='exact')
-        circ_aperture_mean_flux = _aperture_mean_nomask(
-            circ_aperture, image, method='exact')
+        # Force mean fluxes to be positive:
+        circ_annulus_mean_flux = np.abs(_aperture_mean_nomask(
+            circ_annulus, image, method='exact'))
+        circ_aperture_mean_flux = np.abs(_aperture_mean_nomask(
+            circ_aperture, image, method='exact'))
         
         if circ_aperture_mean_flux == 0:
             ratio = 1.0
@@ -505,9 +499,9 @@ class SourceMorphology(object):
         # Find appropriate range for root finder
         r_inner = self._annulus_width
         r_outer = self._diagonal_distance
-        r_grid = np.logspace(np.log10(r_inner), np.log10(r_outer), num=100)
-        r_min, r_max = None, None
         npoints = 100
+        r_grid = np.linspace(r_inner, r_outer, num=npoints)
+        r_min, r_max = None, None
         i = 0  # initial value
         while True:
             if i >= npoints:
@@ -562,7 +556,7 @@ class SourceMorphology(object):
         this function is the Petrosian "radius".
         
         """
-        image = self._cutout_stamp_maskzeroed_nonnegative
+        image = self._cutout_stamp_maskzeroed
 
         b = a / elongation
         a_in = a - 0.5 * self._annulus_width
@@ -576,10 +570,11 @@ class SourceMorphology(object):
         ellip_aperture = photutils.EllipticalAperture(
             center, a, b, theta)
 
-        ellip_annulus_mean_flux = _aperture_mean_nomask(
-            ellip_annulus, image, method='exact')
-        ellip_aperture_mean_flux = _aperture_mean_nomask(
-            ellip_aperture, image, method='exact')
+        # Force mean fluxes to be positive:
+        ellip_annulus_mean_flux = np.abs(_aperture_mean_nomask(
+            ellip_annulus, image, method='exact'))
+        ellip_aperture_mean_flux = np.abs(_aperture_mean_nomask(
+            ellip_aperture, image, method='exact'))
 
         if ellip_aperture_mean_flux == 0:
             ratio = 1.0
@@ -608,10 +603,10 @@ class SourceMorphology(object):
         # Find appropriate range for root finder
         a_inner = self._annulus_width
         a_outer = self._diagonal_distance
-        a_grid = np.logspace(np.log10(a_inner), np.log10(a_outer), num=100)
+        npoints = 100
+        a_grid = np.linspace(a_inner, a_outer, num=npoints)
         a_min, a_max = None, None
         i = 0  # initial value
-        npoints = 100
         while True:
             if i >= npoints:
                 raise Exception('rpet_ellip not found within range.')
@@ -1091,7 +1086,7 @@ class SourceMorphology(object):
         Specialization of ``_radius_at_fraction_of_total`` for
         the CAS calculations.
         """
-        image = self._cutout_stamp_maskzeroed_nonnegative
+        image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
@@ -1511,7 +1506,7 @@ class SourceMorphology(object):
         assuming that the center is at the brightest pixel and the total
         is at ``rmax`` (Pawlik et al. 2016).
         """
-        image = self._cutout_stamp_maskzeroed_nonnegative
+        image = self._cutout_stamp_maskzeroed
         
         # Center at (center of) brightest pixel
         center = np.array([self._x_maxval_stamp, self._y_maxval_stamp]) + 0.5
