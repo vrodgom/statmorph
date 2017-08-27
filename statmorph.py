@@ -727,7 +727,7 @@ class SourceMorphology(object):
         image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
 
-        # Ignore negative pixels
+        # Ignore negative pixels (mostly for consistency with photutils)
         image = np.where(image > 0.0, image, 0.0)
 
         # Calculate centroid
@@ -917,47 +917,30 @@ class SourceMorphology(object):
         Returns
         -------
         asym : The asymmetry statistic for the given center.
-        
-        Notes
-        -----
-        Here are some notes about why I'm *not* using
-        skimage.transform.rotate. The following line would
-        work correctly in skimage version 0.13.0:
-        skimage.transform.rotate(image, 180.0, center=np.floor(center))
-        However, note that the "center" argument must be truncated,
-        which is not mentioned in the documentation
-        (https://github.com/scikit-image/scikit-image/issues/1732).
-        Also, the center must be given as (x,y), not (y,x), which is
-        the opposite (!) of what the skimage documentation says...
-        Such incomplete and contradictory documentation in skimage
-        does not inspire much confidence (probably something will
-        change in future versions), so instead we do the 180 deg
-        rotation by hand. Also, since 180 deg is a very special kind
-        of rotation, the current implementation is probably faster.
 
         """
+        image = np.float64(image)  # skimage wants double
         ny, nx = image.shape
-        xc, yc = np.floor(center)
-        
+        xc, yc = center
+
         if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
             print('[asym_center] Warning: minimizer tried to exit bounds.')
             self.flag = 1
             # Return high value to keep minimizer within range:
             return 100.0
 
-        # Crop to region that can be rotated around center
-        dx = min(nx-1-xc, xc)
-        dy = min(ny-1-yc, yc)
-        xslice = slice(int(xc-dx), int(xc+dx+1))
-        yslice = slice(int(yc-dy), int(yc+dy+1))
-        image = image[yslice, xslice]
-        image_180 = image[::-1, ::-1]
+        # Rotate around given center
+        image_180 = skimage.transform.rotate(image, 180.0, center=center)
 
-        # Move to new center
-        center = np.array([dx, dy])
-        mask = self._mask_stamp[yslice, xslice]
+        # Create and apply symmetric mask
+        mask = self._mask_stamp.copy()
+        mask_180 = skimage.transform.rotate(mask, 180.0, center=center)
+        mask_180 = mask_180 >= 0.5  # convert back to bool
+        mask_symmetric = mask | mask_180
+        image = np.where(~mask_symmetric, image, 0.0)
+        image_180 = np.where(~mask_symmetric, image_180, 0.0)
 
-        # Note that aperture is defined for the new coordinates
+        # Create aperture for the chosen kind of asymmetry
         if kind == 'cas':
             r = self._petro_extent_circ * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
@@ -989,7 +972,7 @@ class SourceMorphology(object):
             asym = ap_abs_diff / ap_abs_sum
         else:
             if np.isfinite(self._sky_asymmetry):
-                ap_area = _aperture_area(ap, mask)
+                ap_area = _aperture_area(ap, mask_symmetric)
                 asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
             else:
                 asym = ap_abs_diff / ap_abs_sum
@@ -1087,6 +1070,9 @@ class SourceMorphology(object):
         the CAS calculations.
         """
         image = self._cutout_stamp_maskzeroed
+        # Ignore negative pixels
+        image = np.where(image > 0.0, image, 0.0)
+
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
@@ -1538,7 +1524,7 @@ class SourceMorphology(object):
 
         """
         ny, nx = self._cutout_stamp_maskzeroed.shape
-        
+
         # Center at (center of) brightest pixel
         xc = self._x_maxval_stamp + 0.5
         yc = self._y_maxval_stamp + 0.5
@@ -1578,16 +1564,9 @@ class SourceMorphology(object):
         mode = 2.5*median - 1.5*mean
         threshold = mode + std
 
-        # It seems that a stellar mask does more harm than good
-        # when calculating the shape asymmetry. Therefore, once we
-        # have estimated the threshold w.r.t. the background, we
-        # apply it to the postage stamp *without* masking stars
-        # or other sources.
-        image_nomask = self._props._data[self._slice_stamp]
-
         # Smooth image slightly and apply 1-sigma threshold
         image_smooth = ndi.uniform_filter(
-            image_nomask, size=self._boxcar_size_shape_asym)
+            self._cutout_stamp_maskzeroed, size=self._boxcar_size_shape_asym)
         above_threshold = image_smooth >= threshold
 
         # Make sure that brightest pixel is in segmap
