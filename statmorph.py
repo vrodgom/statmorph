@@ -10,6 +10,7 @@ import time
 import scipy.optimize as opt
 import scipy.ndimage as ndi
 import skimage.measure
+import skimage.transform
 import skimage.feature
 import skimage.morphology
 from astropy.utils import lazyproperty
@@ -497,19 +498,20 @@ class SourceMorphology(object):
 
         """
         # Find appropriate range for root finder
+        npoints = 100
         r_inner = self._annulus_width
         r_outer = self._diagonal_distance
-        npoints = 100
-        r_grid = np.linspace(r_inner, r_outer, num=npoints)
+        assert(r_inner < r_outer)
+        dr = (r_outer - r_inner) / float(npoints-1)
         r_min, r_max = None, None
-        i = 0  # initial value
+        r = r_inner  # initial value
         while True:
-            if i >= npoints:
-                raise Exception('rpet_circ not found within range.')
-            r = r_grid[i]
+            if r >= r_outer:
+                print('[rpetro_circ] Warning: rpetro larger than cutout.')
+                self.flag = 1
             curval = self._petrosian_function_circ(r, center)
             if curval == 0:
-                print('Warning: we found rpet_circ by pure chance!')
+                print('[rpetro_circ] Warning: we found rpetro by pure chance!')
                 return r
             elif curval > 0:
                 r_min = r
@@ -520,7 +522,7 @@ class SourceMorphology(object):
                 else:
                     r_max = r
                     break
-            i += 1
+            r += dr
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ, 
                                  r_min, r_max, args=(center,), xtol=1e-6)
@@ -601,19 +603,20 @@ class SourceMorphology(object):
 
         """
         # Find appropriate range for root finder
+        npoints = 100
         a_inner = self._annulus_width
         a_outer = self._diagonal_distance
-        npoints = 100
-        a_grid = np.linspace(a_inner, a_outer, num=npoints)
+        assert(a_inner < a_outer)
+        da = (a_outer - a_inner) / float(npoints-1)
         a_min, a_max = None, None
-        i = 0  # initial value
+        a = a_inner  # initial value
         while True:
-            if i >= npoints:
-                raise Exception('rpet_ellip not found within range.')
-            a = a_grid[i]
+            if a >= a_outer:
+                print('[rpetro_ellip] Warning: rpetro larger than cutout.')
+                self.flag = 1
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
             if curval == 0:
-                print('Warning: we found rpet_ellip by pure chance!')
+                print('[rpetro_ellip] Warning: we found rpetro by pure chance!')
                 return a
             elif curval > 0:
                 a_min = a
@@ -624,7 +627,7 @@ class SourceMorphology(object):
                 else:
                     a_max = a
                     break
-            i += 1
+            a += da
 
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
                                   args=(center, elongation, theta,), xtol=1e-6)
