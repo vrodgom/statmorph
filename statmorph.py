@@ -204,11 +204,6 @@ class SourceMorphology(object):
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
         The default value is 3.0.
-    lazy_evaluation : bool, optional
-        If ``True``, only calculate morphological parameters until
-        they are actually used. Note that the value of the
-        "bad measurement" flag may change depending on which
-        parameters have been calculated.
 
     References
     ----------
@@ -222,7 +217,7 @@ class SourceMorphology(object):
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
-                 boxcar_size_shape_asym=3.0, lazy_evaluation=False):
+                 boxcar_size_shape_asym=3.0):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._remove_outliers = remove_outliers
@@ -240,7 +235,6 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_ellip = petro_extent_ellip
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
-        self._lazy_evaluation = lazy_evaluation
 
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
@@ -284,9 +278,11 @@ class SourceMorphology(object):
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
         self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
 
-        # Optionally, go ahead and evaluate everything during initialization:
-        if not self._lazy_evaluation:
-            self.calculate_morphology()
+        # For now, evaluate all "lazy" properties during initialization:
+        self.calculate_morphology()
+
+        #~ # Check segmaps and set flag=1 if they are very different
+        #~ self.check_segmaps()
 
     def __getitem__(self, key):
         return getattr(self, key)
