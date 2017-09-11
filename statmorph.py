@@ -166,10 +166,6 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
-    contiguous_gini_segmap : bool, optional
-        If ``True``, force the Gini segmap to be contiguous. Regardless
-        of the value of this parameter, the "bad measurement" flag is
-        activated when the Gini segmap is not contiguous.
     border_size : int, optional
         The number of pixels that are skipped from each border of the
         "postage stamp" image cutout when finding the skybox. The
@@ -217,7 +213,6 @@ class SourceMorphology(object):
     def __init__(self, image, segmap, label, mask=None, variance=None,
                  cutout_extent=1.5, remove_outliers=True, n_sigma_outlier=10,
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
-                 contiguous_gini_segmap=False,
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
@@ -229,7 +224,6 @@ class SourceMorphology(object):
         self._annulus_width = annulus_width
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
-        self._contiguous_gini_segmap = contiguous_gini_segmap
         self._border_size = border_size
         self._skybox_size = skybox_size
         self._petro_extent_circ = petro_extent_circ
@@ -704,19 +698,16 @@ class SourceMorphology(object):
             assert(np.sum(above_threshold) == 0)  # sanity check
             return above_threshold
 
-        # If more than one region, activate the "bad measurement" flag:
+        # If more than one region, activate the "bad measurement" flag
+        # and only keep segment that contains the brightest pixel.
         if num_features > 1:
             self.flag = 1
-
-        if self._contiguous_gini_segmap:
             ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
-            if labeled_array[ic, jc] == 0:
-                raise Exception('Brightest pixel is outside the main segment?')
+            assert(labeled_array[ic, jc] != 0)
             segmap = labeled_array == labeled_array[ic, jc]
-
         else:
             segmap = above_threshold
-        
+
         return segmap
 
     @lazyproperty
