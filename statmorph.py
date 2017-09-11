@@ -204,6 +204,10 @@ class SourceMorphology(object):
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
         The default value is 3.0.
+    segmap_overlap_ratio : float, optional
+        The minimum ratio between the area of the intersection of
+        all 3 segmaps and the area of the largest segmap in order to
+        have a good measurement. The default is 0.5.
 
     References
     ----------
@@ -217,7 +221,7 @@ class SourceMorphology(object):
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
-                 boxcar_size_shape_asym=3.0):
+                 boxcar_size_shape_asym=3.0, segmap_overlap_ratio=0.5):
         self._variance = variance
         self._cutout_extent = cutout_extent
         self._remove_outliers = remove_outliers
@@ -235,6 +239,7 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_ellip = petro_extent_ellip
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
+        self._segmap_overlap_ratio = segmap_overlap_ratio
 
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
@@ -279,38 +284,13 @@ class SourceMorphology(object):
         self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
 
         # For now, evaluate all "lazy" properties during initialization:
-        self.calculate_morphology()
+        self._calculate_morphology()
 
-        #~ # Check segmaps and set flag=1 if they are very different
-        #~ self.check_segmaps()
+        # Check segmaps and set flag=1 if they are very different
+        self._check_segmaps()
 
     def __getitem__(self, key):
         return getattr(self, key)
-
-    def calculate_morphology(self):
-        """
-        Calculate all morphological parameters, which are stored
-        as "lazy" properties.
-        """
-        quantities = [
-            'rpetro_circ',
-            'rpetro_ellip',
-            'gini',
-            'm20',
-            'sn_per_pixel',
-            'concentration',
-            'asymmetry',
-            'smoothness',
-            'multimode',
-            'intensity',
-            'deviation',
-            'half_light_radius',
-            'rmax',
-            'outer_asymmetry',
-            'shape_asymmetry',
-        ]
-        for q in quantities:
-            tmp = self[q]
 
     def _remove_badpixels(self, image):
         """
@@ -340,6 +320,51 @@ class SourceMorphology(object):
         num_badpixels = np.sum(bad_pixels)
 
         return image, num_badpixels
+
+    def _calculate_morphology(self):
+        """
+        Calculate all morphological parameters, which are stored
+        as "lazy" properties.
+        """
+        quantities = [
+            'rpetro_circ',
+            'rpetro_ellip',
+            'gini',
+            'm20',
+            'sn_per_pixel',
+            'concentration',
+            'asymmetry',
+            'smoothness',
+            'multimode',
+            'intensity',
+            'deviation',
+            'half_light_radius',
+            'rmax',
+            'outer_asymmetry',
+            'shape_asymmetry',
+        ]
+        for q in quantities:
+            tmp = self[q]
+
+    def _check_segmaps(self):
+        """
+        Compare Gini segmap, MID segmap and shape asymmetry segmap,
+        and set flag=1 if they are very different from each other.
+        """
+        area_max = max(np.sum(self._segmap_gini),
+                       np.sum(self._segmap_mid),
+                       np.sum(self._segmap_shape_asym))
+        area_overlap = np.sum(self._segmap_gini &
+                              self._segmap_mid &
+                              self._segmap_shape_asym)
+        if area_max == 0:
+            print('Warning: segmaps are empty!')
+            self.flag = 1
+            return
+
+        area_ratio = area_overlap / float(area_max)
+        if area_ratio < self._segmap_overlap_ratio:
+            self.flag = 1
 
     @lazyproperty
     def _slice_stamp(self):
