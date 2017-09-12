@@ -15,6 +15,8 @@ import skimage.feature
 import skimage.morphology
 from astropy.utils import lazyproperty
 from astropy.stats import sigma_clipped_stats
+from astropy.modeling import models, fitting
+import warnings
 import photutils
 
 __all__ = ['SourceMorphology', 'source_morphology']
@@ -68,18 +70,18 @@ def _fraction_of_total_function(r, image, center, fraction, total_sum):
 
 def _radius_at_fraction_of_total(image, center, r_total, fraction):
     """
-    Return the radius (in pixels) of a concentric circle
-    that contains a given fraction of the light within ``r_total``.
-    The ``center`` is given as (x,y).
+    Return the radius (in pixels) of a concentric circle that
+    contains a given fraction of the light within ``r_total``.
     """
     flag = 0  # flag=1 indicates a problem
 
-    # Make sure that center is at center of pixel
+    # Make sure that center is at center of pixel (otherwise,
+    # very compact objects can become problematic):
     center = np.floor(center) + 0.5
 
     ap_total = photutils.CircularAperture(center, r_total)
-    # Force flux sum to be positive:
-    total_sum = np.abs(ap_total.do_photometry(image, method='exact')[0][0])
+
+    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
     if total_sum <= 0:
         print('Warning: total flux sum is not positive.')
         flag = 1
@@ -87,8 +89,7 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
 
     # Find appropriate range for root finder
     npoints = 100
-    r_inner = 0.5  # just the central pixel
-
+    r_inner = min(0.5, 0.2*r_total)  # just the central pixel
     assert(r_total > r_inner)
     r_grid = np.linspace(r_inner, r_total, num=npoints)
     r_min, r_max = None, None
@@ -203,7 +204,7 @@ class SourceMorphology(object):
     segmap_overlap_ratio : float, optional
         The minimum ratio between the area of the intersection of
         all 3 segmaps and the area of the largest segmap in order to
-        have a good measurement. The default is 0.5.
+        have a good measurement.
 
     References
     ----------
@@ -215,7 +216,7 @@ class SourceMorphology(object):
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
-                 niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=1.5,
+                 niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=2.0,
                  boxcar_size_shape_asym=3.0, segmap_overlap_ratio=0.5):
         self._variance = variance
         self._cutout_extent = cutout_extent
@@ -256,6 +257,7 @@ class SourceMorphology(object):
 
         # The following properties may be modified by other functions:
         self.flag = 0  # attempts to flag bad measurements
+        self.flag_sersic = 0  # attempts to flag bad Sersic fits
 
         # Position of the "postage stamp" cutout:
         self._xmin_stamp = self._slice_stamp[1].start
@@ -336,6 +338,7 @@ class SourceMorphology(object):
             'rmax',
             'outer_asymmetry',
             'shape_asymmetry',
+            'sersic_index',
         ]
         for q in quantities:
             tmp = self[q]
@@ -455,6 +458,44 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed_no_bg_nonnegative
         return np.sort(image[~self._mask_stamp_no_bg])
+
+    @lazyproperty
+    def _sersic_model(self):
+        """
+        Fit a 2D Sersic profile using Astropy's model fitting library.
+        """
+        i, j = int(self._yc_stamp), int(self._xc_stamp)
+        z = self._cutout_stamp_maskzeroed
+        ny, nx = z.shape
+        y, x = np.mgrid[0:ny, 0:nx]
+
+        # Initial guess
+        sersic_init = models.Sersic2D(
+            amplitude=z[i, j],
+            r_eff=self.half_light_radius, n=2.5,
+            x_0=self._xc_stamp, y_0=self._yc_stamp,
+            ellip=self._props.ellipticity.value,
+            theta=self._props.orientation.value)
+        
+        # Try to fit model
+        fit_sersic = fitting.LevMarLSQFitter()
+        with warnings.catch_warnings(record=True) as w:
+            start = time.time()
+            sersic_model = fit_sersic(sersic_init, x, y, z)
+            print('Fitting time: %g s' % (time.time() - start))
+            if len(w) > 0:
+                print('[sersic] Warning: The fit may be unsuccessful.')
+                self.flag_sersic = 1
+            return sersic_model
+
+        assert(False)
+
+    @lazyproperty
+    def sersic_index(self):
+        """
+        The Sersic index.
+        """
+        return self._sersic_model.n.value
 
     @lazyproperty
     def _diagonal_distance(self):
@@ -742,9 +783,6 @@ class SourceMorphology(object):
         image = np.where(self._segmap_gini, self._cutout_stamp_maskzeroed, 0.0)
         image = np.float64(image)  # skimage wants double
 
-        # Ignore negative pixels (mostly for consistency with photutils)
-        image = np.where(image > 0.0, image, 0.0)
-
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
         yc = m[0, 1] / m[0, 0]
@@ -947,7 +985,7 @@ class SourceMorphology(object):
         # Rotate around given center
         image_180 = skimage.transform.rotate(image, 180.0, center=center)
 
-        # Create and apply symmetric mask
+        # Apply symmetric mask
         mask = self._mask_stamp.copy()
         mask_180 = skimage.transform.rotate(mask, 180.0, center=center)
         mask_180 = mask_180 >= 0.5  # convert back to bool
@@ -1043,17 +1081,41 @@ class SourceMorphology(object):
         return covariance
 
     @lazyproperty
+    def _asymmetry_eigvals(self):
+        """
+        The ordered (largest first) eigenvalues of the covariance
+        matrix, which correspond to the *squared* semimajor and
+        semiminor axes.
+        """
+        eigvals = np.linalg.eigvals(self._asymmetry_covariance)
+        eigvals = np.sort(eigvals)[::-1]  # largest first
+        assert(np.all(eigvals > 0))
+        
+        return eigvals
+
+    @lazyproperty
+    def _asymmetry_ellipticity(self):
+        """
+        The elongation of (the Gaussian function that has the same
+        second-order moments as) the source, using ``_asymmetry_center``
+        as the center.
+        """
+        a = np.sqrt(self._asymmetry_eigvals[0])
+        b = np.sqrt(self._asymmetry_eigvals[1])
+
+        return 1.0 - (b / a)
+
+    @lazyproperty
     def _asymmetry_elongation(self):
         """
         The elongation of (the Gaussian function that has the same
         second-order moments as) the source, using ``_asymmetry_center``
         as the center.
         """
-        eigvals = np.linalg.eigvals(self._asymmetry_covariance)
-        eigvals = np.sort(eigvals)[::-1]  # largest first
-        assert(np.all(eigvals > 0))
-        
-        return np.sqrt(eigvals[0]) / np.sqrt(eigvals[1])
+        a = np.sqrt(self._asymmetry_eigvals[0])
+        b = np.sqrt(self._asymmetry_eigvals[1])
+
+        return a / b
 
     @lazyproperty
     def _asymmetry_orientation(self):
@@ -1085,9 +1147,6 @@ class SourceMorphology(object):
         the CAS calculations.
         """
         image = self._cutout_stamp_maskzeroed
-        # Ignore negative pixels
-        image = np.where(image > 0.0, image, 0.0)
-
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
@@ -1504,13 +1563,11 @@ class SourceMorphology(object):
     def half_light_radius(self):
         """
         The radius of a circular aperture containing 50% of the light,
-        assuming that the center is at the brightest pixel and the total
-        is at ``rmax`` (Pawlik et al. 2016).
+        assuming that the center is the point that minimizes the
+        asymmetry and that the total is at ``rmax``.
         """
         image = self._cutout_stamp_maskzeroed
-        
-        # Center at (center of) brightest pixel
-        center = np.array([self._x_maxval_stamp, self._y_maxval_stamp]) + 0.5
+        center = self._asymmetry_center
 
         if self.rmax == 0:
             r = 0.0
@@ -1518,7 +1575,7 @@ class SourceMorphology(object):
             r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
             self.flag = max(self.flag, flag)
         
-        # In theory, the return value can also be NaN
+        # In theory, this return value can also be NaN
         return r
 
     @lazyproperty
@@ -1534,22 +1591,22 @@ class SourceMorphology(object):
         representative of the background. In order to avoid amplifying
         uncertainties from the central regions of the galaxy profile,
         we assume that such an aperture has inner and outer radii
-        equal to 1.5 and 3.0 times the elliptical Petrosian "radius"
-        (this can be changed by the user).
+        equal to 2 and 4 times the elliptical Petrosian "radius"
+        (this can be changed by the user). Also, we define the center
+        as the pixel that minimizes the asymmetry, instead of the
+        brightest pixel.
 
         """
         ny, nx = self._cutout_stamp_maskzeroed.shape
 
-        # Center at (center of) brightest pixel
-        xc = self._x_maxval_stamp + 0.5
-        yc = self._y_maxval_stamp + 0.5
-        ic, jc = int(yc), int(xc)
+        # Center at (center of) pixel that minimizes asymmetry
+        center = np.floor(self._asymmetry_center) + 0.5
 
-        # Create a circular annulus around the brightest pixel
+        # Create a circular annulus around the center
         # that only contains background sky (hopefully).
         r_in = self._petro_extent_ellip * self.rpetro_ellip
         r_out = 2.0 * self._petro_extent_ellip * self.rpetro_ellip
-        circ_annulus = photutils.CircularAnnulus((xc, yc), r_in, r_out)
+        circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
         circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
@@ -1584,7 +1641,8 @@ class SourceMorphology(object):
             self._cutout_stamp_maskzeroed, size=self._boxcar_size_shape_asym)
         above_threshold = image_smooth >= threshold
 
-        # Make sure that brightest pixel is in segmap
+        # Make sure that brightest pixel (of smoothed image) is in segmap
+        ic, jc = np.argwhere(image_smooth == np.max(image_smooth))[0]
         if ~above_threshold[ic, jc]:
             print('[shape_asym] Warning: adding brightest pixel to segmap.')
             above_threshold[ic, jc] = True
@@ -1599,18 +1657,17 @@ class SourceMorphology(object):
     @lazyproperty
     def rmax(self):
         """
-        Return the distance (in pixels) from the brightest pixel
-        to the edge of the main source segment, as defined in
-        Pawlik et al. (2016).
+        Return the distance (in pixels) from the pixel that minimizes
+        the asymmetry to the edge of the main source segment, similar 
+        to Pawlik et al. (2016).
         """
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
 
-        # Center at (center of) brightest pixel
-        xc = self._x_maxval_stamp + 0.5
-        yc = self._y_maxval_stamp + 0.5
+        # Center at (center of) pixel that minimizes asymmetry
+        xc, yc = np.floor(self._asymmetry_center) + 0.5
 
-        # Distances from all pixels to the brightest pixel
+        # Distances from all pixels to the center
         ypos, xpos = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
         distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
         
@@ -1633,7 +1690,7 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         
         # Initial guess
-        center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
+        center_0 = self._asymmetry_center
         
         center_asym = opt.fmin(self._asymmetry_function, center_0,
                                args=(image, 'outer'), xtol=1e-6, disp=0)
@@ -1660,7 +1717,7 @@ class SourceMorphology(object):
         image = np.where(self._segmap_shape_asym, 1.0, 0.0)
 
         # Initial guess
-        center_0 = np.array([self._x_maxval_stamp, self._y_maxval_stamp])
+        center_0 = self._asymmetry_center
         
         # Find minimum at pixel precision (xtol=1)
         center_asym = opt.fmin(self._asymmetry_function, center_0,
