@@ -58,9 +58,9 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     """
     return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
 
-def _fraction_of_total_function(r, image, center, fraction, total_sum):
+def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
-    Helper function to calculate ``_radius_at_fraction_of_total``.
+    Helper function to calculate ``_radius_at_fraction_of_total_circ``.
     """
     ap = photutils.CircularAperture(center, r)
     # Force flux sum to be positive:
@@ -68,7 +68,7 @@ def _fraction_of_total_function(r, image, center, fraction, total_sum):
 
     return ap_sum / total_sum - fraction
 
-def _radius_at_fraction_of_total(image, center, r_total, fraction):
+def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     """
     Return the radius (in pixels) of a concentric circle that
     contains a given fraction of the light within ``r_total``.
@@ -85,11 +85,11 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
     if total_sum <= 0:
         print('Warning: total flux sum is not positive.')
         flag = 1
-        return np.nan, flag
+        total_sum = np.abs(total_sum)
 
     # Find appropriate range for root finder
     npoints = 100
-    r_inner = min(0.5, 0.2*r_total)  # just the central pixel
+    r_inner = 0.2
     assert(r_total > r_inner)
     r_grid = np.linspace(r_inner, r_total, num=npoints)
     r_min, r_max = None, None
@@ -98,7 +98,7 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
         if i >= npoints:
             raise Exception('Root not found within range.')
         r = r_grid[i]
-        curval = _fraction_of_total_function(r, image, center, fraction, total_sum)
+        curval = _fraction_of_total_function_circ(r, image, center, fraction, total_sum)
         if curval == 0:
             print('Warning: found root by pure chance!')
             return r, flag
@@ -113,10 +113,77 @@ def _radius_at_fraction_of_total(image, center, r_total, fraction):
                 break
         i += 1
 
-    r = opt.brentq(_fraction_of_total_function, r_min, r_max,
+    r = opt.brentq(_fraction_of_total_function_circ, r_min, r_max,
                    args=(image, center, fraction, total_sum), xtol=1e-6)
 
     return r, flag
+
+def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
+                                      fraction, total_sum):
+    """
+    Helper function to calculate ``_radius_at_fraction_of_total_ellip``.
+    """
+    b = a / elongation
+    ap = photutils.EllipticalAperture(center, a, b, theta)
+    # Force flux sum to be positive:
+    ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+
+    return ap_sum / total_sum - fraction
+
+def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
+                                       a_total, fraction):
+    """
+    Return the semimajor axis (in pixels) of a concentric ellipse that
+    contains a given fraction of the light within a larger ellipse of
+    semimajor axis ``a_total``.
+    """
+    flag = 0  # flag=1 indicates a problem
+
+    # Make sure that center is at center of pixel (otherwise,
+    # very compact objects can become problematic):
+    center = np.floor(center) + 0.5
+
+    b_total = a_total / elongation
+    ap_total = photutils.EllipticalAperture(center, a_total, b_total, theta)
+
+    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    if total_sum <= 0:
+        print('Warning: total flux sum is not positive.')
+        flag = 1
+        total_sum = np.abs(total_sum)
+
+    # Find appropriate range for root finder
+    npoints = 100
+    a_inner = 0.2
+    assert(a_total > a_inner)
+    a_grid = np.linspace(a_inner, a_total, num=npoints)
+    a_min, a_max = None, None
+    i = 0  # initial value
+    while True:
+        if i >= npoints:
+            raise Exception('Root not found within range.')
+        a = a_grid[i]
+        curval = _fraction_of_total_function_ellip(
+            a, image, center, elongation, theta, fraction, total_sum)
+        if curval == 0:
+            print('Warning: found root by pure chance!')
+            return r, flag
+        elif curval < 0:
+            a_min = a
+        elif curval > 0:
+            if a_min is None:
+                print('Warning: a_min is not defined yet.')
+                flag = 1
+            else:
+                a_max = a
+                break
+        i += 1
+
+    a = opt.brentq(_fraction_of_total_function_ellip, a_min, a_max,
+                   args=(image, center, elongation, theta, fraction, total_sum),
+                   xtol=1e-6)
+
+    return a, flag
 
 
 class SourceMorphology(object):
@@ -257,6 +324,7 @@ class SourceMorphology(object):
 
         # The following properties may be modified by other functions:
         self.flag = 0  # attempts to flag bad measurements
+        self.flag_segmap = 0  # checks consistency between segmaps
         self.flag_sersic = 0  # attempts to flag bad Sersic fits
 
         # Position of the "postage stamp" cutout:
@@ -325,6 +393,12 @@ class SourceMorphology(object):
         quantities = [
             'rpetro_circ',
             'rpetro_ellip',
+            'rmax_circ',
+            'rmax_ellip',
+            'rhalf_circ',
+            'rhalf_ellip',
+            'r_20',
+            'r_80',
             'gini',
             'm20',
             'sn_per_pixel',
@@ -334,8 +408,6 @@ class SourceMorphology(object):
             'multimode',
             'intensity',
             'deviation',
-            'half_light_radius',
-            'rmax',
             'outer_asymmetry',
             'shape_asymmetry',
             'sersic_index',
@@ -356,12 +428,12 @@ class SourceMorphology(object):
                               self._segmap_shape_asym)
         if area_max == 0:
             print('Warning: segmaps are empty!')
-            self.flag = 1
+            self.flag_segmap = 1
             return
 
         area_ratio = area_overlap / float(area_max)
         if area_ratio < self._segmap_overlap_ratio:
-            self.flag = 1
+            self.flag_segmap = 1
 
     @lazyproperty
     def _slice_stamp(self):
@@ -464,31 +536,61 @@ class SourceMorphology(object):
         """
         Fit a 2D Sersic profile using Astropy's model fitting library.
         """
-        i, j = int(self._yc_stamp), int(self._xc_stamp)
-        z = self._cutout_stamp_maskzeroed
-        ny, nx = z.shape
+        image = self._cutout_stamp_maskzeroed
+        ny, nx = image.shape
+        center = self._asymmetry_center
+        theta = self._asymmetry_orientation
+
+        # Get flux at the "effective radius"
+        a_in = self.rhalf_ellip - 0.5 * self._annulus_width
+        a_out = self.rhalf_ellip + 0.5 * self._annulus_width
+        assert(a_in >= 0)
+        b_out = a_out / self._asymmetry_elongation
+        ellip_annulus = photutils.EllipticalAnnulus(
+            center, a_in, a_out, b_out, theta)
+        ellip_annulus_mean_flux = _aperture_mean_nomask(
+            ellip_annulus, image, method='exact')
+        if ellip_annulus_mean_flux <= 0.0:
+            print('[sersic] Warning: Negative flux at r_e.')
+            self.flag_sersic = 1
+            ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
+
+        # Prepare data for fitting
+        z = image
         y, x = np.mgrid[0:ny, 0:nx]
+        weights = np.ones_like(z)
+        if self._variance is not None:
+            variance = self._variance[self._slice_stamp]
+            # Quite arbitrarily, pixels with variance=0 have weight=1
+            locs = variance != 0
+            weights[locs] = 1.0 / np.abs(variance[locs])
+        # Only fit main segment of shape asymmetry segmap
+        locs = self._segmap_shape_asym
+        x, y, z, weights = x[locs], y[locs], z[locs], weights[locs]
 
         # Initial guess
+        xc, yc = self._asymmetry_center
         sersic_init = models.Sersic2D(
-            amplitude=z[i, j],
-            r_eff=self.half_light_radius, n=2.5,
-            x_0=self._xc_stamp, y_0=self._yc_stamp,
-            ellip=self._props.ellipticity.value,
-            theta=self._props.orientation.value)
-        
+            amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
+            n=2.5, x_0=xc, y_0=yc, ellip=self._asymmetry_ellipticity,
+            theta=theta)
+
+        # The number of data points cannot be smaller than the number of
+        # free parameters (7 in the case of Sersic2D)
+        if z.size < sersic_init.parameters.size:
+            print('[sersic] Warning: not enough data for fit.')
+            self.flag_sersic = 1
+            return sersic_init
+
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         with warnings.catch_warnings(record=True) as w:
-            start = time.time()
-            sersic_model = fit_sersic(sersic_init, x, y, z)
-            print('Fitting time: %g s' % (time.time() - start))
+            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights)
             if len(w) > 0:
                 print('[sersic] Warning: The fit may be unsuccessful.')
                 self.flag_sersic = 1
-            return sersic_model
-
-        assert(False)
+            
+        return sersic_model
 
     @lazyproperty
     def sersic_index(self):
@@ -998,17 +1100,17 @@ class SourceMorphology(object):
             r = self._petro_extent_circ * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
-            r_in = self.half_light_radius
-            r_out = self.rmax
+            r_in = self.rhalf_circ
+            r_out = self.rmax_circ
             if np.isnan(r_in) or np.isnan(r_out) or (r_in <= 0) or (r_out <= 0):
                 self.flag = 1
                 return -99.0  # invalid
             ap = photutils.CircularAnnulus(center, r_in, r_out)
         elif kind == 'shape':
-            if np.isnan(self.rmax) or (self.rmax <= 0):
+            if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
                 self.flag = 1
                 return -99.0  # invalid
-            ap = photutils.CircularAperture(center, self.rmax)
+            ap = photutils.CircularAperture(center, self.rmax_circ)
         else:
             raise Exception('Asymmetry kind not understood:', kind)
 
@@ -1143,14 +1245,14 @@ class SourceMorphology(object):
 
     def _radius_at_fraction_of_total_cas(self, fraction):
         """
-        Specialization of ``_radius_at_fraction_of_total`` for
+        Specialization of ``_radius_at_fraction_of_total_circ`` for
         the CAS calculations.
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
         r_upper = self._petro_extent_circ * self.rpetro_circ
         
-        r, flag = _radius_at_fraction_of_total(image, center, r_upper, fraction)
+        r, flag = _radius_at_fraction_of_total_circ(image, center, r_upper, fraction)
         self.flag = max(self.flag, flag)
         
         if np.isnan(r) or (r <= 0.0):
@@ -1560,19 +1662,41 @@ class SourceMorphology(object):
     ###################
 
     @lazyproperty
-    def half_light_radius(self):
+    def rhalf_circ(self):
         """
         The radius of a circular aperture containing 50% of the light,
         assuming that the center is the point that minimizes the
-        asymmetry and that the total is at ``rmax``.
+        asymmetry and that the total is at ``rmax_circ``.
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
 
-        if self.rmax == 0:
+        if self.rmax_circ == 0:
             r = 0.0
         else:
-            r, flag = _radius_at_fraction_of_total(image, center, self.rmax, 0.5)
+            r, flag = _radius_at_fraction_of_total_circ(
+                image, center, self.rmax_circ, 0.5)
+            self.flag = max(self.flag, flag)
+        
+        # In theory, this return value can also be NaN
+        return r
+
+    @lazyproperty
+    def rhalf_ellip(self):
+        """
+        The semimajor axis of an elliptical aperture containing 50% of
+        the light, assuming that the center is the point that minimizes
+        the asymmetry and that the total is at ``rmax_ellip``.
+        """
+        image = self._cutout_stamp_maskzeroed
+        center = self._asymmetry_center
+
+        if self.rmax_ellip == 0:
+            r = 0.0
+        else:
+            r, flag = _radius_at_fraction_of_total_ellip(
+                image, center, self._asymmetry_elongation,
+                self._asymmetry_orientation, self.rmax_ellip, 0.5)
             self.flag = max(self.flag, flag)
         
         # In theory, this return value can also be NaN
@@ -1655,7 +1779,7 @@ class SourceMorphology(object):
         return labeled_array == labeled_array[ic, jc]
 
     @lazyproperty
-    def rmax(self):
+    def rmax_circ(self):
         """
         Return the distance (in pixels) from the pixel that minimizes
         the asymmetry to the edge of the main source segment, similar 
@@ -1672,14 +1796,45 @@ class SourceMorphology(object):
         distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
         
         # Only consider pixels within the segmap.
-        rmax = np.max(distances[self._segmap_shape_asym])
+        rmax_circ = np.max(distances[self._segmap_shape_asym])
         
-        if rmax < 1:
-            assert(rmax == 0)  # this should be the only possibility
-            print('[rmax] Warning: rmax = %g' % (rmax))
+        if rmax_circ < 1:
+            assert(rmax_circ == 0)  # this should be the only possibility
+            print('[rmax_circ] Warning: rmax_circ = %g' % (rmax_circ))
             self.flag = 1
         
-        return rmax
+        return rmax_circ
+
+    @lazyproperty
+    def rmax_ellip(self):
+        """
+        Return the semimajor axis of the minimal ellipse (with fixed
+        center, elongation and orientation) that contains all of
+        the main segment of the shape asymmetry segmap. In most
+        cases this is almost identical to rmax_circ.
+        """
+        image = self._cutout_stamp_maskzeroed
+        ny, nx = image.shape
+
+        # Center at (center of) pixel that minimizes asymmetry
+        xc, yc = np.floor(self._asymmetry_center) + 0.5
+
+        theta = self._asymmetry_orientation
+        y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
+
+        xprime = (x-xc)*np.cos(theta) + (y-yc)*np.sin(theta)
+        yprime = -(x-xc)*np.sin(theta) + (y-yc)*np.cos(theta)
+        r_ellip = np.sqrt(xprime**2 + (yprime*self._asymmetry_elongation)**2)
+
+        # Only consider pixels within the segmap.
+        rmax_ellip = np.max(r_ellip[self._segmap_shape_asym])
+        
+        if rmax_ellip < 1:
+            assert(rmax_ellip == 0)  # this should be the only possibility
+            print('[rmax_ellip] Warning: rmax_ellip = %g' % (rmax_ellip))
+            self.flag = 1
+        
+        return rmax_ellip
 
     @lazyproperty
     def _outer_asymmetry_center(self):
