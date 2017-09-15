@@ -918,7 +918,8 @@ class SourceMorphology(object):
         mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=3)
         second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
 
-        if second_moment == 0:
+        if (second_moment_20 <= 0) | (second_moment <= 0):
+            self.flag = 1
             m20 = -99.0  # invalid
         else:
             m20 = np.log10(second_moment_20 / second_moment)
