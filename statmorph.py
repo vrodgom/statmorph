@@ -26,7 +26,7 @@ def _quantile(sorted_values, q):
     For a sorted (in increasing order) 1-d array, return the
     value corresponding to the quantile ``q``.
     """
-    assert((q >= 0) and (q <= 1))
+    assert ((q >= 0) & (q <= 1))
     if q == 1:
         return sorted_values[-1]
     else:
@@ -306,6 +306,15 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._segmap_overlap_ratio = segmap_overlap_ratio
 
+        if not isinstance(segmap, photutils.SegmentationImage):
+            segmap = photutils.SegmentationImage(segmap)
+
+        assert segmap.shape == image.shape
+        if mask is not None:
+            assert mask.shape == image.shape
+        if variance is not None:
+            assert variance.shape == image.shape
+
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
         locs_invalid = ~np.isfinite(image)
@@ -319,8 +328,7 @@ class SourceMorphology(object):
 
         # Check that the main galaxy segment has a positive flux sum:
         valid_locs = np.isfinite(image) & (segmap == label) & (~mask)
-        if np.sum(image[valid_locs]) <= 0:
-            raise AssertionError
+        assert np.sum(image[valid_locs]) > 0
 
         # Before doing anything else, remove "bad pixels" (outliers):
         self.num_badpixels = -1
@@ -457,7 +465,7 @@ class SourceMorphology(object):
         dist = max(xmax-xc, xc-xmin, ymax-yc, yc-ymin)
 
         # Add some extra space in each dimension
-        assert(self._cutout_extent >= 1.0)
+        assert self._cutout_extent >= 1.0
         dist = int(dist * self._cutout_extent)
 
         # Make cutout
@@ -635,7 +643,6 @@ class SourceMorphology(object):
 
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
-        assert(r_in >= 0)
 
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
         circ_aperture = photutils.CircularAperture(center, r)
@@ -673,7 +680,7 @@ class SourceMorphology(object):
         npoints = 100
         r_inner = self._annulus_width
         r_outer = self._diagonal_distance
-        assert(r_inner < r_outer)
+        assert r_inner < r_outer
         dr = (r_outer - r_inner) / float(npoints-1)
         r_min, r_max = None, None
         r = r_inner  # initial value
@@ -738,7 +745,6 @@ class SourceMorphology(object):
         b = a / elongation
         a_in = a - 0.5 * self._annulus_width
         a_out = a + 0.5 * self._annulus_width
-        assert(a_in >= 0)
 
         b_out = a_out / elongation
 
@@ -781,7 +787,7 @@ class SourceMorphology(object):
         npoints = 100
         a_inner = self._annulus_width
         a_outer = self._diagonal_distance
-        assert(a_inner < a_outer)
+        assert a_inner < a_outer
         da = (a_outer - a_inner) / float(npoints-1)
         a_min, a_max = None, None
         a = a_inner  # initial value
@@ -859,7 +865,6 @@ class SourceMorphology(object):
             warnings.warn('[segmap_gini] Empty Gini segmap!',
                           AstropyUserWarning)
             self.flag = 1
-            assert(np.sum(above_threshold) == 0)  # sanity check
             return above_threshold
 
         # If more than one region, activate the "bad measurement" flag
@@ -867,7 +872,7 @@ class SourceMorphology(object):
         if num_features > 1:
             self.flag = 1
             ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
-            assert(labeled_array[ic, jc] != 0)
+            assert labeled_array[ic, jc] != 0
             segmap = labeled_array == labeled_array[ic, jc]
         else:
             segmap = above_threshold
@@ -1013,7 +1018,7 @@ class SourceMorphology(object):
                               self._skybox_size), AstropyUserWarning)
 
         # Should not reach this point.
-        assert(False)
+        raise AssertionError
 
     @lazyproperty
     def _sky_mean(self):
@@ -1195,7 +1200,7 @@ class SourceMorphology(object):
         # Calculate moments w.r.t. asymmetry center
         xc, yc = self._asymmetry_center
         mc = skimage.measure.moments_central(image, yc, xc, order=3)
-        assert(mc[0, 0] > 0)
+        assert mc[0, 0] > 0
 
         covariance = np.array([
             [mc[2, 0], mc[1, 1]],
@@ -1218,7 +1223,7 @@ class SourceMorphology(object):
         """
         eigvals = np.linalg.eigvals(self._asymmetry_covariance)
         eigvals = np.sort(eigvals)[::-1]  # largest first
-        assert(np.all(eigvals > 0))
+        assert np.all(eigvals > 0)
         
         return eigvals
 
@@ -1365,7 +1370,7 @@ class SourceMorphology(object):
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
 
         # Sanity check (brightest pixel should be part of the main clump):
-        assert(labeled_array[ic, jc] != 0)
+        assert labeled_array[ic, jc] != 0
 
         return labeled_array == labeled_array[ic, jc]
 
@@ -1831,8 +1836,7 @@ class SourceMorphology(object):
         # Only consider pixels within the segmap.
         rmax_circ = np.max(distances[self._segmap_shape_asym])
         
-        if rmax_circ < 1:
-            assert(rmax_circ == 0)  # this should be the only possibility
+        if rmax_circ == 0:
             warnings.warn('[rmax_circ] rmax_circ = 0!', AstropyUserWarning)
             self.flag = 1
         
@@ -1862,8 +1866,7 @@ class SourceMorphology(object):
         # Only consider pixels within the segmap.
         rmax_ellip = np.max(r_ellip[self._segmap_shape_asym])
         
-        if rmax_ellip < 1:
-            assert(rmax_ellip == 0)  # this should be the only possibility
+        if rmax_ellip == 0:
             warnings.warn('[rmax_ellip] rmax_ellip = 0!', AstropyUserWarning)
             self.flag = 1
         
@@ -1964,7 +1967,6 @@ def source_morphology(image, segmap, **kwargs):
     See `README.md` for a list of references.
 
     """
-    assert(image.shape == segmap.shape)
     if not isinstance(segmap, photutils.SegmentationImage):
         segmap = photutils.SegmentationImage(segmap)
 
