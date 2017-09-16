@@ -62,11 +62,17 @@ def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
     Helper function to calculate ``_radius_at_fraction_of_total_circ``.
     """
-    ap = photutils.CircularAperture(center, r)
-    # Force flux sum to be positive:
-    ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+    if (r < 0) | (fraction < 0) | (fraction > 1) | (total_sum <= 0):
+        raise AssertionError
+    elif r == 0:
+        cur_fraction = 0.0
+    else:
+        ap = photutils.CircularAperture(center, r)
+        # Force flux sum to be positive:
+        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        cur_fraction = ap_sum / total_sum
 
-    return ap_sum / total_sum - fraction
+    return cur_fraction - fraction
 
 def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     """
@@ -82,35 +88,31 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     ap_total = photutils.CircularAperture(center, r_total)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    if total_sum <= 0:
-        warnings.warn('Total flux sum is not positive.', AstropyUserWarning)
+    if total_sum == 0:
+        raise AssertionError
+    elif total_sum < 0:
+        warnings.warn('Total flux sum is negative.', AstropyUserWarning)
         flag = 1
         total_sum = np.abs(total_sum)
 
     # Find appropriate range for root finder
     npoints = 100
-    r_inner = 0.2
-    assert(r_total > r_inner)
-    r_grid = np.linspace(r_inner, r_total, num=npoints)
-    r_min, r_max = None, None
+    r_grid = np.linspace(0.0, r_total, num=npoints)
     i = 0  # initial value
     while True:
         if i >= npoints:
             raise Exception('Root not found within range.')
         r = r_grid[i]
-        curval = _fraction_of_total_function_circ(r, image, center, fraction, total_sum)
+        curval = _fraction_of_total_function_circ(
+            r, image, center, fraction, total_sum)
         if curval == 0:
             warnings.warn('Found root by pure chance!', AstropyUserWarning)
             return r, flag
         elif curval < 0:
             r_min = r
         elif curval > 0:
-            if r_min is None:
-                warnings.warn('r_min is not defined yet.', AstropyUserWarning)
-                flag = 1
-            else:
-                r_max = r
-                break
+            r_max = r
+            break
         i += 1
 
     r = opt.brentq(_fraction_of_total_function_circ, r_min, r_max,
@@ -123,12 +125,18 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
     """
     Helper function to calculate ``_radius_at_fraction_of_total_ellip``.
     """
-    b = a / elongation
-    ap = photutils.EllipticalAperture(center, a, b, theta)
-    # Force flux sum to be positive:
-    ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
-
-    return ap_sum / total_sum - fraction
+    if (a < 0) | (fraction < 0) | (fraction > 1) | (total_sum <= 0):
+        raise AssertionError
+    elif a == 0:
+        cur_fraction = 0.0
+    else:
+        b = a / elongation
+        ap = photutils.EllipticalAperture(center, a, b, theta)
+        # Force flux sum to be positive:
+        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        cur_fraction = ap_sum / total_sum
+    
+    return cur_fraction - fraction
 
 def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
                                        a_total, fraction):
@@ -147,17 +155,16 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     ap_total = photutils.EllipticalAperture(center, a_total, b_total, theta)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    if total_sum <= 0:
-        warnings.warn('Total flux sum is not positive.', AstropyUserWarning)
+    if total_sum == 0:
+        raise AssertionError
+    elif total_sum < 0:
+        warnings.warn('Total flux sum is negative.', AstropyUserWarning)
         flag = 1
         total_sum = np.abs(total_sum)
 
     # Find appropriate range for root finder
     npoints = 100
-    a_inner = 0.2
-    assert(a_total > a_inner)
-    a_grid = np.linspace(a_inner, a_total, num=npoints)
-    a_min, a_max = None, None
+    a_grid = np.linspace(0.0, a_total, num=npoints)
     i = 0  # initial value
     while True:
         if i >= npoints:
@@ -171,12 +178,8 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
         elif curval < 0:
             a_min = a
         elif curval > 0:
-            if a_min is None:
-                warnings.warn('a_min is not defined yet.', AstropyUserWarning)
-                flag = 1
-            else:
-                a_max = a
-                break
+            a_max = a
+            break
         i += 1
 
     a = opt.brentq(_fraction_of_total_function_ellip, a_min, a_max,
@@ -313,6 +316,11 @@ class SourceMorphology(object):
         if mask is None:
             mask = np.zeros(image.shape, dtype=np.bool8)
         mask = mask | locs_invalid
+
+        # Check that the main galaxy segment has a positive flux sum:
+        valid_locs = np.isfinite(image) & (segmap == label) & (~mask)
+        if np.sum(image[valid_locs]) <= 0:
+            raise AssertionError
 
         # Before doing anything else, remove "bad pixels" (outliers):
         self.num_badpixels = -1
@@ -544,14 +552,18 @@ class SourceMorphology(object):
         # Get flux at the "effective radius"
         a_in = self.rhalf_ellip - 0.5 * self._annulus_width
         a_out = self.rhalf_ellip + 0.5 * self._annulus_width
-        assert(a_in >= 0)
+        if a_in < 0:
+            warnings.warn('[sersic] rhalf_ellip < annulus_width.',
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+            a_in = self.rhalf_ellip
         b_out = a_out / self._asymmetry_elongation
         ellip_annulus = photutils.EllipticalAnnulus(
             center, a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, image, method='exact')
         if ellip_annulus_mean_flux <= 0.0:
-            warnings.warn('[sersic] Negative flux at r_e.', AstropyUserWarning)
+            warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
             self.flag_sersic = 1
             ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
 
