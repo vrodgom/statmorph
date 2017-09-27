@@ -338,7 +338,7 @@ class SourceMorphology(object):
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
-        # The following properties may be modified by other functions:
+        # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements
         self.flag_segmap = 0  # checks consistency between segmaps
         self.flag_sersic = 0  # attempts to flag bad Sersic fits
@@ -360,8 +360,8 @@ class SourceMorphology(object):
             self.flag = 1
 
         # Position of the brightest pixel relative to the cutout:
-        self._x_maxval_stamp = self._props.maxval_xpos.value - self._slice_stamp[1].start
-        self._y_maxval_stamp = self._props.maxval_ypos.value - self._slice_stamp[0].start
+        self._x_maxval_stamp = self._props.maxval_xpos.value - self._xmin_stamp
+        self._y_maxval_stamp = self._props.maxval_ypos.value - self._ymin_stamp
 
         # For now, evaluate all "lazy" properties during initialization:
         self._calculate_morphology()
@@ -407,6 +407,13 @@ class SourceMorphology(object):
         as "lazy" properties.
         """
         quantities = [
+            'xc_centroid',
+            'yc_centroid',
+            'xc_asymmetry',
+            'yc_asymmetry',
+            'ellipticity',
+            'elongation',
+            'orientation',
             'rpetro_circ',
             'rpetro_ellip',
             'rmax_circ',
@@ -426,7 +433,13 @@ class SourceMorphology(object):
             'deviation',
             'outer_asymmetry',
             'shape_asymmetry',
-            'sersic_index',
+            'sersic_amplitude',
+            'sersic_rhalf',
+            'sersic_n',
+            'sersic_xc',
+            'sersic_yc',
+            'sersic_ellip',
+            'sersic_theta',
         ]
         for q in quantities:
             tmp = self[q]
@@ -450,6 +463,20 @@ class SourceMorphology(object):
         area_ratio = area_overlap / float(area_max)
         if area_ratio < self._segmap_overlap_ratio:
             self.flag_segmap = 1
+
+    @lazyproperty
+    def xc_centroid(self):
+        """
+        The x-coordinate of the centroid, relative to the original image.
+        """
+        return self._props.xcentroid.value
+
+    @lazyproperty
+    def yc_centroid(self):
+        """
+        The y-coordinate of the centroid, relative to the original image.
+        """
+        return self._props.ycentroid.value
 
     @lazyproperty
     def _slice_stamp(self):
@@ -546,80 +573,6 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed_no_bg_nonnegative
         return np.sort(image[~self._mask_stamp_no_bg])
-
-    @lazyproperty
-    def _sersic_model(self):
-        """
-        Fit a 2D Sersic profile using Astropy's model fitting library.
-        """
-        image = self._cutout_stamp_maskzeroed
-        ny, nx = image.shape
-        center = self._asymmetry_center
-        theta = self._asymmetry_orientation
-
-        # Get flux at the "effective radius"
-        a_in = self.rhalf_ellip - 0.5 * self._annulus_width
-        a_out = self.rhalf_ellip + 0.5 * self._annulus_width
-        if a_in < 0:
-            warnings.warn('[sersic] rhalf_ellip < annulus_width.',
-                          AstropyUserWarning)
-            self.flag_sersic = 1
-            a_in = self.rhalf_ellip
-        b_out = a_out / self._asymmetry_elongation
-        ellip_annulus = photutils.EllipticalAnnulus(
-            center, a_in, a_out, b_out, theta)
-        ellip_annulus_mean_flux = _aperture_mean_nomask(
-            ellip_annulus, image, method='exact')
-        if ellip_annulus_mean_flux <= 0.0:
-            warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
-            self.flag_sersic = 1
-            ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
-
-        # Prepare data for fitting
-        z = image
-        y, x = np.mgrid[0:ny, 0:nx]
-        weights = np.ones_like(z)
-        if self._variance is not None:
-            variance = self._variance[self._slice_stamp]
-            # Quite arbitrarily, pixels with variance=0 have weight=1
-            locs = variance != 0
-            weights[locs] = 1.0 / np.abs(variance[locs])
-        # Only fit main segment of shape asymmetry segmap
-        locs = self._segmap_shape_asym
-        x, y, z, weights = x[locs], y[locs], z[locs], weights[locs]
-
-        # Initial guess
-        xc, yc = self._asymmetry_center
-        sersic_init = models.Sersic2D(
-            amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-            n=2.5, x_0=xc, y_0=yc, ellip=self._asymmetry_ellipticity,
-            theta=theta)
-
-        # The number of data points cannot be smaller than the number of
-        # free parameters (7 in the case of Sersic2D)
-        if z.size < sersic_init.parameters.size:
-            warnings.warn('[sersic] Not enough data for fit.',
-                          AstropyUserWarning)
-            self.flag_sersic = 1
-            return sersic_init
-
-        # Try to fit model
-        fit_sersic = fitting.LevMarLSQFitter()
-        with warnings.catch_warnings(record=True) as w:
-            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights)
-            if len(w) > 0:
-                warnings.warn('[sersic] The fit may be unsuccessful.',
-                              AstropyUserWarning)
-                self.flag_sersic = 1
-            
-        return sersic_model
-
-    @lazyproperty
-    def sersic_index(self):
-        """
-        The Sersic index.
-        """
-        return self._sersic_model.n.value
 
     @lazyproperty
     def _diagonal_distance(self):
@@ -825,8 +778,8 @@ class SourceMorphology(object):
         respect to the point that minimizes the asymmetry.
         """
         return self._rpetro_ellip_generic(
-            self._asymmetry_center, self._asymmetry_elongation,
-            self._asymmetry_orientation)
+            self._asymmetry_center, self.elongation,
+            self.orientation)
 
 
     #######################
@@ -846,8 +799,8 @@ class SourceMorphology(object):
         # Use mean flux at the Petrosian "radius" as threshold
         a_in = self.rpetro_ellip - 0.5 * self._annulus_width
         a_out = self.rpetro_ellip + 0.5 * self._annulus_width
-        b_out = a_out / self._props.elongation.value
-        theta = self._props.orientation.value
+        b_out = a_out / self.elongation
+        theta = self.orientation
         ellip_annulus = photutils.EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
@@ -1186,6 +1139,22 @@ class SourceMorphology(object):
         return center_asym
 
     @lazyproperty
+    def xc_asymmetry(self):
+        """
+        The x-coordinate of the point that minimizes the asymmetry,
+        relative to the original image.
+        """
+        return self._xmin_stamp + self._asymmetry_center[0]
+
+    @lazyproperty
+    def yc_asymmetry(self):
+        """
+        The y-coordinate of the point that minimizes the asymmetry,
+        relative to the original image.
+        """
+        return self._ymin_stamp + self._asymmetry_center[1]
+
+    @lazyproperty
     def _asymmetry_covariance(self):
         """
         The covariance matrix of a Gaussian function that has the same
@@ -1228,11 +1197,11 @@ class SourceMorphology(object):
         return eigvals
 
     @lazyproperty
-    def _asymmetry_ellipticity(self):
+    def ellipticity(self):
         """
-        The elongation of (the Gaussian function that has the same
-        second-order moments as) the source, using ``_asymmetry_center``
-        as the center.
+        The ellipticity of (the Gaussian function that has the same
+        second-order moments as) the source, relative to the point
+        that minimizes the asymmetry.
         """
         a = np.sqrt(self._asymmetry_eigvals[0])
         b = np.sqrt(self._asymmetry_eigvals[1])
@@ -1240,11 +1209,11 @@ class SourceMorphology(object):
         return 1.0 - (b / a)
 
     @lazyproperty
-    def _asymmetry_elongation(self):
+    def elongation(self):
         """
         The elongation of (the Gaussian function that has the same
-        second-order moments as) the source, using ``_asymmetry_center``
-        as the center.
+        second-order moments as) the source, relative to the point
+        that minimizes the asymmetry.
         """
         a = np.sqrt(self._asymmetry_eigvals[0])
         b = np.sqrt(self._asymmetry_eigvals[1])
@@ -1252,10 +1221,10 @@ class SourceMorphology(object):
         return a / b
 
     @lazyproperty
-    def _asymmetry_orientation(self):
+    def orientation(self):
         """
-        The orientation (in radians) of the source, using
-        ``_asymmetry_center`` as the center.
+        The orientation (in radians) of the source, relative to
+        the point that minimizes the asymmetry.
         """
         A, B, B, C = self._asymmetry_covariance.flat
         
@@ -1730,8 +1699,8 @@ class SourceMorphology(object):
             r = 0.0
         else:
             r, flag = _radius_at_fraction_of_total_ellip(
-                image, center, self._asymmetry_elongation,
-                self._asymmetry_orientation, self.rmax_ellip, 0.5)
+                image, center, self.elongation,
+                self.orientation, self.rmax_ellip, 0.5)
             self.flag = max(self.flag, flag)
         
         # In theory, this return value can also be NaN
@@ -1856,12 +1825,12 @@ class SourceMorphology(object):
         # Center at (center of) pixel that minimizes asymmetry
         xc, yc = np.floor(self._asymmetry_center) + 0.5
 
-        theta = self._asymmetry_orientation
+        theta = self.orientation
         y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
 
         xprime = (x-xc)*np.cos(theta) + (y-yc)*np.sin(theta)
         yprime = -(x-xc)*np.sin(theta) + (y-yc)*np.cos(theta)
-        r_ellip = np.sqrt(xprime**2 + (yprime*self._asymmetry_elongation)**2)
+        r_ellip = np.sqrt(xprime**2 + (yprime*self.elongation)**2)
 
         # Only consider pixels within the segmap.
         rmax_ellip = np.max(r_ellip[self._segmap_shape_asym])
@@ -1926,6 +1895,132 @@ class SourceMorphology(object):
                                         image, 'shape')
 
         return asym
+
+    ####################
+    # SERSIC MODEL FIT #
+    ####################
+
+    @lazyproperty
+    def _sersic_model(self):
+        """
+        Fit a 2D Sersic profile using Astropy's model fitting library.
+        """
+        image = self._cutout_stamp_maskzeroed
+        ny, nx = image.shape
+        center = self._asymmetry_center
+        theta = self.orientation
+
+        # Get flux at the "effective radius"
+        a_in = self.rhalf_ellip - 0.5 * self._annulus_width
+        a_out = self.rhalf_ellip + 0.5 * self._annulus_width
+        if a_in < 0:
+            warnings.warn('[sersic] rhalf_ellip < annulus_width.',
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+            a_in = self.rhalf_ellip
+        b_out = a_out / self.elongation
+        ellip_annulus = photutils.EllipticalAnnulus(
+            center, a_in, a_out, b_out, theta)
+        ellip_annulus_mean_flux = _aperture_mean_nomask(
+            ellip_annulus, image, method='exact')
+        if ellip_annulus_mean_flux <= 0.0:
+            warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
+            self.flag_sersic = 1
+            ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
+
+        # Prepare data for fitting
+        z = image
+        y, x = np.mgrid[0:ny, 0:nx]
+        weights = np.ones_like(z)
+        if self._variance is not None:
+            variance = self._variance[self._slice_stamp]
+            # Quite arbitrarily, pixels with variance=0 have weight=1
+            locs = variance != 0
+            weights[locs] = 1.0 / np.abs(variance[locs])
+        # Only fit main segment of shape asymmetry segmap
+        locs = self._segmap_shape_asym
+        x, y, z, weights = x[locs], y[locs], z[locs], weights[locs]
+
+        # Initial guess
+        xc, yc = self._asymmetry_center
+        sersic_init = models.Sersic2D(
+            amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
+            n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity,
+            theta=theta)
+
+        # The number of data points cannot be smaller than the number of
+        # free parameters (7 in the case of Sersic2D)
+        if z.size < sersic_init.parameters.size:
+            warnings.warn('[sersic] Not enough data for fit.',
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+            return sersic_init
+
+        # Try to fit model
+        fit_sersic = fitting.LevMarLSQFitter()
+        with warnings.catch_warnings(record=True) as w:
+            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights)
+            if len(w) > 0:
+                warnings.warn('[sersic] The fit may be unsuccessful.',
+                              AstropyUserWarning)
+                self.flag_sersic = 1
+            
+        return sersic_model
+
+    @lazyproperty
+    def sersic_amplitude(self):
+        """
+        The amplitude of the 2D Sersic fit at the effective (half-light)
+        radius (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.amplitude.value
+
+    @lazyproperty
+    def sersic_rhalf(self):
+        """
+        The effective (half-light) radius of the 2D Sersic fit
+        (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.r_eff.value
+
+    @lazyproperty
+    def sersic_n(self):
+        """
+        The Sersic index ``n`` (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.n.value
+
+    @lazyproperty
+    def sersic_xc(self):
+        """
+        The x-coordinate of the center of the 2D Sersic fit
+        (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.x_0.value
+
+    @lazyproperty
+    def sersic_yc(self):
+        """
+        The y-coordinate of the center of the 2D Sersic fit
+        (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.y_0.value
+
+    @lazyproperty
+    def sersic_ellip(self):
+        """
+        The ellipticity of the 2D Sersic fit
+        (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.ellip.value
+
+    @lazyproperty
+    def sersic_theta(self):
+        """
+        The orientation (counterclockwise, in radians) of the
+        2D Sersic fit (`astropy.modeling.models.Sersic2D`).
+        """
+        return self._sersic_model.theta.value
 
 
 def source_morphology(image, segmap, **kwargs):
