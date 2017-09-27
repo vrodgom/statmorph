@@ -1994,17 +1994,19 @@ class SourceMorphology(object):
     def sersic_xc(self):
         """
         The x-coordinate of the center of the 2D Sersic fit
-        (`astropy.modeling.models.Sersic2D`).
+        (`astropy.modeling.models.Sersic2D`), relative to the
+        original image.
         """
-        return self._sersic_model.x_0.value
+        return self._xmin_stamp + self._sersic_model.x_0.value
 
     @lazyproperty
     def sersic_yc(self):
         """
         The y-coordinate of the center of the 2D Sersic fit
-        (`astropy.modeling.models.Sersic2D`).
+        (`astropy.modeling.models.Sersic2D`), relative to the
+        original image.
         """
-        return self._sersic_model.y_0.value
+        return self._ymin_stamp + self._sersic_model.y_0.value
 
     @lazyproperty
     def sersic_ellip(self):
