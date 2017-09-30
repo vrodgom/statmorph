@@ -189,6 +189,38 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     return a, flag
 
 
+class ConvolvedSersic2D(models.Sersic2D):
+    """
+    Two-dimensional Sersic surface brightness profile, convolved with
+    a PSF provided by the user as a numpy array.
+
+    See Also
+    --------
+    astropy.modeling.models.Sersic2D
+
+    """
+    psf = None
+
+    @classmethod
+    def set_psf(cls, psf):
+        """
+        Specify the PSF to be convolved with the Sersic2D model.
+        """
+        cls.psf = psf / np.sum(psf)  # make sure it's normalized
+
+    @classmethod
+    def evaluate(cls, x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta):
+        """
+        Evaluate the ConvolvedSersic2D model.
+        """
+        z_sersic = models.Sersic2D.evaluate(x, y, amplitude, r_eff, n, x_0, y_0,
+                                            ellip, theta)
+        if cls.psf is None:
+            raise Exception('Must specify PSF using set_psf method.')
+
+        return ndi.convolve(z_sersic, cls.psf)
+
+
 class SourceMorphology(object):
     """
     Class to measure the morphological parameters of a single labeled
@@ -212,6 +244,9 @@ class SourceMorphology(object):
         A 2D array with the same size as ``image`` with the
         values of the variance (RMS^2). This is required
         in order to calculate the signal-to-noise correctly.
+    psf : array-like, optional
+        A 2D array representing the PSF, where the central pixel
+        corresponds to the center of the PSF.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
@@ -281,7 +316,7 @@ class SourceMorphology(object):
     See `README.md` for a list of references.
 
     """
-    def __init__(self, image, segmap, label, mask=None, variance=None,
+    def __init__(self, image, segmap, label, mask=None, variance=None, psf=None,
                  cutout_extent=1.5, remove_outliers=True, n_sigma_outlier=10,
                  annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
@@ -289,6 +324,7 @@ class SourceMorphology(object):
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=2.0,
                  boxcar_size_shape_asym=3.0, segmap_overlap_ratio=0.5):
         self._variance = variance
+        self._psf = psf
         self._cutout_extent = cutout_extent
         self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
@@ -312,15 +348,19 @@ class SourceMorphology(object):
         assert segmap.shape == image.shape
         if mask is not None:
             assert mask.shape == image.shape
-        if variance is not None:
-            assert variance.shape == image.shape
+        if self._variance is not None:
+            assert self._variance.shape == image.shape
+
+        # Normalize PSF
+        if self._psf is not None:
+            self._psf = self._psf / np.sum(self._psf)
 
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
         locs_invalid = ~np.isfinite(image)
-        if variance is not None:
-            locs_invalid = locs_invalid | ~np.isfinite(variance)
-            variance[locs_invalid] = 0.0
+        if self._variance is not None:
+            locs_invalid = locs_invalid | ~np.isfinite(self._variance)
+            self._variance[locs_invalid] = 0.0
         image[locs_invalid] = 0.0
         if mask is None:
             mask = np.zeros(image.shape, dtype=np.bool8)
@@ -1553,7 +1593,7 @@ class SourceMorphology(object):
         res = opt.basinhopping(self._multimode_ratio, q0,
             minimizer_kwargs={"method": "Nelder-Mead"},
             niter=self._niter_bh_mid, T=temperature, stepsize=mid_stepsize,
-            interval=self._niter_bh_mid/2, disp=False)
+            interval=self._niter_bh_mid/2, disp=False, seed=0)
         q_final = res.x[0]
 
         # Finally, return A2/A1 instead of (A2/A1)*A2
@@ -1938,15 +1978,19 @@ class SourceMorphology(object):
             locs = variance != 0
             weights[locs] = 1.0 / np.abs(variance[locs])
         # Only fit main segment of shape asymmetry segmap
-        locs = self._segmap_shape_asym
-        x, y, z, weights = x[locs], y[locs], z[locs], weights[locs]
+        weights[~self._segmap_shape_asym] = 0.0
 
         # Initial guess
         xc, yc = self._asymmetry_center
-        sersic_init = models.Sersic2D(
-            amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-            n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity,
-            theta=theta)
+        if self._psf is None:
+            sersic_init = models.Sersic2D(
+                amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
+                n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+        else:
+            sersic_init = ConvolvedSersic2D(
+                amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
+                n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+            sersic_init.set_psf(self._psf)
 
         # The number of data points cannot be smaller than the number of
         # free parameters (7 in the case of Sersic2D)
