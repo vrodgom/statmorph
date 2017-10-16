@@ -1,0 +1,4 @@
+include LICENSE
+include *.rst *.txt
+recursive-include statmorph *.py
+recursive-include notebooks *.ipynb
