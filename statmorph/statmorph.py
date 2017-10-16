@@ -40,6 +40,29 @@ def _mode(a, axis=None):
     """
     return 2.5*np.ma.median(a, axis=axis) - 1.5*np.ma.mean(a, axis=axis)
 
+def _local_variance(image):
+    """
+    Calculate a map of the local variance for each pixel.
+
+    Notes
+    -----
+    ndi.generic_filter(image, np.std, ...) is too slow,
+    so we do a workaround using ndi.convolve.
+    """
+    # Pixel weights, excluding central pixel.
+    w = np.array([
+        [1, 1, 1],
+        [1, 0, 1],
+        [1, 1, 1]], dtype=np.float64)
+    w = w / np.sum(w)
+    
+    # Use the fact that var(x) = <x^2> - <x>^2.
+    local_mean = ndi.convolve(image, w)
+    local_mean2 = ndi.convolve(image**2, w)
+    local_var = local_mean2 - local_mean**2
+    
+    return local_var
+
 def _aperture_area(ap, mask, **kwargs):
     """
     Calculate the area of a photutils aperture object,
@@ -345,11 +368,14 @@ class SourceMorphology(object):
         if not isinstance(segmap, photutils.SegmentationImage):
             segmap = photutils.SegmentationImage(segmap)
 
+        # Check sanity of input data
+        if mask is None:
+            mask = np.zeros(image.shape, dtype=np.bool8)
+        if self._variance is None:
+            self._variance = _local_variance(image)
         assert segmap.shape == image.shape
-        if mask is not None:
-            assert mask.shape == image.shape
-        if self._variance is not None:
-            assert self._variance.shape == image.shape
+        assert self._variance.shape == image.shape
+        assert mask.shape == image.shape
 
         # Normalize PSF
         if self._psf is not None:
@@ -357,23 +383,22 @@ class SourceMorphology(object):
 
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
-        locs_invalid = ~np.isfinite(image)
-        if self._variance is not None:
-            locs_invalid = locs_invalid | ~np.isfinite(self._variance)
-            self._variance[locs_invalid] = 0.0
+        locs_invalid = ~np.isfinite(image) | ~np.isfinite(self._variance)
+        self._variance[locs_invalid] = 0.0
         image[locs_invalid] = 0.0
-        if mask is None:
-            mask = np.zeros(image.shape, dtype=np.bool8)
         mask = mask | locs_invalid
 
         # Check that the main galaxy segment has a positive flux sum:
         valid_locs = np.isfinite(image) & (segmap == label) & (~mask)
         assert np.sum(image[valid_locs]) > 0
 
-        # Before doing anything else, remove "bad pixels" (outliers):
+        # Before doing anything else, set badpixels (outliers) to zero:
         self.num_badpixels = -1
         if self._remove_outliers:
-            image, self.num_badpixels = self._remove_badpixels(image)
+            badpixels = self._get_badpixels(image)
+            image = np.where(~badpixels, image, 0.0)
+            mask = mask | badpixels
+            self.num_badpixels = np.sum(badpixels)
 
         # The following object stores some important data:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
@@ -412,9 +437,9 @@ class SourceMorphology(object):
     def __getitem__(self, key):
         return getattr(self, key)
 
-    def _remove_badpixels(self, image):
+    def _get_badpixels(self, image):
         """
-        Remove outliers (bad pixels) as described in Lotz et al. (2004).
+        Detect outliers (bad pixels) as described in Lotz et al. (2004).
 
         Notes
         -----
@@ -433,13 +458,11 @@ class SourceMorphology(object):
         local_mean2 = ndi.convolve(image**2, w)
         local_std = np.sqrt(local_mean2 - local_mean**2)
 
-        # Set "bad pixels" to zero.
-        bad_pixels = (np.abs(image - local_mean) >
+        # Get "bad pixels"
+        badpixels = (np.abs(image - local_mean) >
                       self._n_sigma_outlier * local_std)
-        image[bad_pixels] = 0.0
-        num_badpixels = np.sum(bad_pixels)
-
-        return image, num_badpixels
+        
+        return badpixels
 
     def _calculate_morphology(self):
         """
@@ -941,17 +964,14 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
+        variance = self._variance[self._slice_stamp]
+        if np.any(variance < 0):
+            warnings.warn('[sn_per_pixel] Some negative variance values.',
+                          AstropyUserWarning)
+            variance = np.abs(variance)
+
         locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
         pixelvals = self._cutout_stamp_maskzeroed[locs]
-        if self._variance is None:
-            variance = np.zeros_like(pixelvals)
-        else:
-            variance = self._variance[self._slice_stamp]
-            if np.any(variance < 0):
-                warnings.warn('[sn_per_pixel] Some negative variance values.',
-                              AstropyUserWarning)
-                variance = np.abs(variance)
-
         snp = np.mean(
             pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
         if not np.isfinite(snp):
@@ -1969,14 +1989,14 @@ class SourceMorphology(object):
             ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
 
         # Prepare data for fitting
-        z = image
+        z = image.copy()
         y, x = np.mgrid[0:ny, 0:nx]
-        weights = np.ones_like(z)
-        if self._variance is not None:
-            variance = self._variance[self._slice_stamp]
-            # Quite arbitrarily, pixels with variance=0 have weight=1
-            locs = variance != 0
-            weights[locs] = 1.0 / np.abs(variance[locs])
+        variance = self._variance[self._slice_stamp]
+        # Pixels with variance=0 are suspicious, so we exclude them
+        # from the fit (set weight=0).
+        weights = np.zeros_like(z)
+        locs = variance != 0
+        weights[locs] = 1.0 / np.abs(variance[locs])
         # Only fit main segment of shape asymmetry segmap
         weights[~self._segmap_shape_asym] = 0.0
 
