@@ -269,7 +269,10 @@ class SourceMorphology(object):
         in order to calculate the signal-to-noise correctly.
     psf : array-like, optional
         A 2D array representing the PSF, where the central pixel
-        corresponds to the center of the PSF.
+        corresponds to the center of the PSF. Typically, including
+        this keyword argument will make the code run slower by a
+        factor of a few, although the resulting Sersic fits will
+        in principle be more correct.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
@@ -329,6 +332,9 @@ class SourceMorphology(object):
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
         The default value is 3.0.
+    sersic_maxiter : int, optional
+        The maximum number of iterations during the Sersic profile
+        fitting.
     segmap_overlap_ratio : float, optional
         The minimum ratio between the area of the intersection of
         all 3 segmaps and the area of the largest segmap in order to
@@ -345,7 +351,8 @@ class SourceMorphology(object):
                  border_size=4, skybox_size=32, petro_extent_circ=1.5,
                  petro_fraction_cas=0.25, boxcar_size_mid=3.0,
                  niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=2.0,
-                 boxcar_size_shape_asym=3.0, segmap_overlap_ratio=0.5):
+                 boxcar_size_shape_asym=3.0, sersic_maxiter=500,
+                 segmap_overlap_ratio=0.5):
         self._variance = variance
         self._psf = psf
         self._cutout_extent = cutout_extent
@@ -363,6 +370,7 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_ellip = petro_extent_ellip
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
+        self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
 
         if not isinstance(segmap, photutils.SegmentationImage):
@@ -1964,6 +1972,7 @@ class SourceMorphology(object):
     def _sersic_model(self):
         """
         Fit a 2D Sersic profile using Astropy's model fitting library.
+        Return the fitted model object.
         """
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
@@ -2001,15 +2010,21 @@ class SourceMorphology(object):
         weights[~self._segmap_shape_asym] = 0.0
 
         # Initial guess
+        if self.concentration < 3.0:
+            guess_n = 1.0
+        elif self.concentration < 4.0:
+            guess_n = 2.0
+        else:
+            guess_n = 3.5
         xc, yc = self._asymmetry_center
         if self._psf is None:
             sersic_init = models.Sersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
         else:
             sersic_init = ConvolvedSersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=2.5, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
             sersic_init.set_psf(self._psf)
 
         # The number of data points cannot be smaller than the number of
@@ -2023,12 +2038,15 @@ class SourceMorphology(object):
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         with warnings.catch_warnings(record=True) as w:
-            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights)
+            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights,
+                                      maxiter=self._sersic_maxiter)
             if len(w) > 0:
                 warnings.warn('[sersic] The fit may be unsuccessful.',
                               AstropyUserWarning)
+                print('[sersic] Message from scipy.optimize:')
+                print(fit_sersic.fit_info['message'])
                 self.flag_sersic = 1
-            
+        
         return sersic_model
 
     @lazyproperty
