@@ -64,7 +64,7 @@ All of the following dependencies are included in the
 How to use
 -------------
 
-Please see the `statmorph tutorial <http://nbviewer.jupyter.org/github/vrodgom/statmorph/notebooks/tutorial.ipynb>`_.
+Please see the `statmorph tutorial <http://nbviewer.jupyter.org/github/vrodgom/statmorph/blob/master/notebooks/tutorial.ipynb>`_.
 
 Authors
 -------
