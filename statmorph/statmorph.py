@@ -4,6 +4,7 @@ of galaxy images.
 """
 # Author: Vicente Rodriguez-Gomez <vrg@jhu.edu>
 # Licensed under a 3-Clause BSD License.
+from __future__ import absolute_import, division, print_function
 
 import warnings
 import numpy as np
