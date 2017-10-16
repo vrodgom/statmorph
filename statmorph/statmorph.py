@@ -2005,7 +2005,9 @@ class SourceMorphology(object):
         # from the fit (set weight=0).
         weights = np.zeros_like(z)
         locs = variance != 0
-        weights[locs] = 1.0 / np.abs(variance[locs])
+        # We also include the background noise
+        weights[locs] = 1.0 / np.sqrt(np.abs(variance[locs]) + self._sky_sigma**2)
+
         # Only fit main segment of shape asymmetry segmap
         weights[~self._segmap_shape_asym] = 0.0
 
