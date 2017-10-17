@@ -36,22 +36,22 @@ Input
 The main interface to use the code is the `source_morphology` function.
 As input, it requires:
 
-- The image containing the source(s) of interest.
-- A segmentation map of the same size as the image with different sources
-  labeled by different positive integer numbers. A value of zero is reserved
-  for the background.
+- *image* : The image (2D array) containing the source(s) of interest.
+- *segmap* : A segmentation map (2D array) of the same size as the image with
+  different sources labeled by different positive integer numbers. A value of
+  zero is reserved for the background.
 
 Optionally, the function can also accept:
 
-- A 2D array (of the same size as the image) indicating the pixels that should
-  be masked (e.g., to remove contamination from foreground stars).
-- A 2D array (of the same size as the image) representing the local variance
-  of the image. This is usually the inverse of the "weight" map produced by
-  *SExtractor* and similar software. If the variance is not provided,
-  statmorph will calculate it.
-- A 2D array (usually smaller than the image) with the point spread function
-  (PSF). This is convolved with the Sersic model in every step of the profile
-  fitting, and typically makes the code slower by a factor of 2-3.
+- *mask* : A 2D array (of the same size as the image) indicating the pixels
+  that should be masked (e.g., to remove contamination from foreground stars).
+- *variance* : A 2D array (of the same size as the image) representing the
+  local variance of the image. This is usually the inverse of the "weight" map
+  produced by *SExtractor* and similar software. If the variance is not
+  provided, statmorph will calculate it.
+- *psf* : A 2D array (usually smaller than the image) with the point spread
+  function (PSF). This is convolved with the Sersic model in every step of the
+  profile fitting, and typically makes the code slower by a factor of 2-3.
 
 In addition, almost all of the parameters used in the calculation of the
 morphological diagnostics can be specified by the user as keyword
@@ -73,7 +73,7 @@ and bad measurements, respectively):
 1. *flag* : indicates a problem with the basic morphological measurements
    (e.g., a discontinuous Gini segmentation map).
 2. *flag_segmap* : indicates when the 3 segmentation maps (Gini, MID,
-    shape asymmetry) are very different from each other.
+   shape asymmetry) are very different from each other.
 3. *flag_sersic* : indicates if there was a problem/warning during the
    Sersic profile fitting. 
 

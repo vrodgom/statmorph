@@ -212,6 +212,16 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
 
     return a, flag
 
+def bulge_statistic(G, M20):
+    """
+    For given values of Gini and M20, calculate F(G,M20), the bulge
+    statistic from Snyder et al. (2015).
+    """
+    F_norm = np.abs(-0.693*M20 + 4.95*G - 3.85)
+    F_sign = np.ones_like(F_norm)
+    F_sign[G < 0.14*M20 + 0.778] = -1.0
+    return F_sign * F_norm
+
 
 class ConvolvedSersic2D(models.Sersic2D):
     """
@@ -496,6 +506,7 @@ class SourceMorphology(object):
             'r_80',
             'gini',
             'm20',
+            'gini_m20_bulge',
             'sn_per_pixel',
             'concentration',
             'asymmetry',
@@ -967,6 +978,14 @@ class SourceMorphology(object):
             m20 = np.log10(second_moment_20 / second_moment)
 
         return m20
+
+    @lazyproperty
+    def gini_m20_bulge(self):
+        """
+        Return the Gini-M20 bulge statistic, F(G, M20), as defined
+        in Snyder et al. (2015).
+        """
+        return bulge_statistic(self.gini, self.m20)
 
     @lazyproperty
     def sn_per_pixel(self):
