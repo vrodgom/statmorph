@@ -13,7 +13,6 @@ but a more complete list can be found in the README.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
    
    description
    tutorial

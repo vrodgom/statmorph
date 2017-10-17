@@ -71,13 +71,16 @@ extract the contents of the zipfile, and run:
 
 Authors
 -------
+
 - Vicente Rodriguez-Gomez (vrg [at] jhu.edu)
+- Jennifer Lotz
+- Greg Snyder
 
 Acknowledgments
 ---------------
 
-- Based on IDL and Python code by Jennifer Lotz, Greg Snyder, Peter
-  Freeman and Mike Peth.
+- We thank Peter Freeman and Mike Peth for their IDL implementation of the
+  MID statistics.
 
 Citing
 ------

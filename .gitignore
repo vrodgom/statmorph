@@ -9,6 +9,11 @@ plots/*
 # Profiling
 *.prof
 
+# Documentation
+docs/_build/*
+docs/_static/*
+docs/_templates/*
+
 # Packaging
 dist/*
 statmorph.egg-info/*
