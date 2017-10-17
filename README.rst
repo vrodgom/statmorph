@@ -33,7 +33,7 @@ but a more complete list can be found in the *Citing* section.
 Documentation
 -------------
 
-The documentation can be found at
+The documentation can be found on
 `ReadTheDocs <http://statmorph.readthedocs.io/en/latest/>`_.
 
 Tutorial / How to use
