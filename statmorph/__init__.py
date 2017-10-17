@@ -1,1 +1,1 @@
-from .statmorph import *
+from .statmorph import SourceMorphology, source_morphology

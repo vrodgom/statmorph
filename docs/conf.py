@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # statmorph documentation build configuration file, created by
-# sphinx-quickstart on Tue Oct 17 15:59:08 2017.
+# sphinx-quickstart on Tue Oct 17 18:32:59 2017.
 #
 # This file is execfile()d with the current directory set to its
 # containing dir.
@@ -21,6 +21,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../'))
 
+
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -32,8 +33,6 @@ sys.path.insert(0, os.path.abspath('../'))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.doctest',
-    'sphinx.ext.coverage',
     'sphinx.ext.imgmath',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon']
