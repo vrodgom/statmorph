@@ -15,5 +15,4 @@ statmorph.egg-info/*
 
 # Other, custom
 *.sh
-*.txt
-test_*.py
+notebooks/.ipynb_checkpoints/*

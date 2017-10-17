@@ -4,8 +4,8 @@ statmorph
 Python code for calculating non-parametric morphological parameters of
 galaxy images.
 
-Description
------------
+Brief description
+-----------------
 
 For a given image and a corresponding segmentation map indicating the
 source(s) of interest (labeled by positive integer numbers), this code
@@ -30,60 +30,11 @@ Greg Snyder. The main scientific reference is
 `Lotz et al. (2004) <http://adsabs.harvard.edu/abs/2004AJ....128..163L>`_,
 but a more complete list can be found in the *Citing* section.
 
-Input
------
+Documentation
+-------------
 
-The main interface to use the code is the `source_morphology` function.
-As input, it requires:
-
-- *image* : The image (2D array) containing the source(s) of interest.
-- *segmap* : A segmentation map (2D array) of the same size as the image with
-  different sources labeled by different positive integer numbers. A value of
-  zero is reserved for the background.
-
-Optionally, the function can also accept:
-
-- *mask* : A 2D array (of the same size as the image) indicating the pixels
-  that should be masked (e.g., to remove contamination from foreground stars).
-- *variance* : A 2D array (of the same size as the image) representing the
-  local variance of the image. This is usually the inverse of the "weight" map
-  produced by *SExtractor* and similar software. If the variance is not
-  provided, statmorph will calculate it.
-- *psf* : A 2D array (usually smaller than the image) with the point spread
-  function (PSF). This is convolved with the Sersic model in every step of the
-  profile fitting, and typically makes the code slower by a factor of 2-3.
-
-In addition, almost all of the parameters used in the calculation of the
-morphological diagnostics can be specified by the user as keyword
-arguments, although it is recommended to leave the default values alone.
-For a complete list of keyword arguments, see the docstring of the
-`SourceMorphology` class.
-
-Output
-------
-
-The output of the `source_morphology` function is a list of
-`SourceMorphology` objects, one for each labeled source, in which the
-different morphological measurements can be accessed as keys or attributes.
-
-Apart from the morphological parameters, statmorph also produces three
-different "bad measurement" flags (where values of 0 and 1 indicate good
-and bad measurements, respectively):
-
-1. *flag* : indicates a problem with the basic morphological measurements
-   (e.g., a discontinuous Gini segmentation map).
-2. *flag_segmap* : indicates when the 3 segmentation maps (Gini, MID,
-   shape asymmetry) are very different from each other.
-3. *flag_sersic* : indicates if there was a problem/warning during the
-   Sersic profile fitting. 
-
-In general, users should enforce *flag* == 0. The other two are optional.
-
-In addition to the flags described above, the output should
-not be trusted when any of the measured distance scales (Petrosian radii,
-half-light radii, etc.) is smaller than the radius at half-maximum of the PSF,
-or when the signal-to-noise per pixel (``sn_per_pixel``) is lower than 2.5
-(`Lotz et al. 2006 <http://adsabs.harvard.edu/abs/2006ApJ...636..592L>`_).
+The documentation can be found at
+`ReadTheDocs <http://statmorph.readthedocs.io/en/latest/>`_.
 
 Tutorial / How to use
 ---------------------
@@ -132,7 +83,7 @@ Citing
 ------
 
 If you use this code for a scientific publication, please cite the following
-*Monthly Notices of the Royal Astronomical Society* article:
+article:
 
 - Rodriguez-Gomez et al. (in prep.)
 

@@ -353,7 +353,7 @@ class SourceMorphology(object):
 
     References
     ----------
-    See `README.md` for a list of references.
+    See `README.rst` for a list of references.
 
     """
     def __init__(self, image, segmap, label, mask=None, variance=None, psf=None,
@@ -2161,11 +2161,11 @@ def source_morphology(image, segmap, **kwargs):
     
     Examples
     --------
-    See `README.md` for a usage example.
+    See `README.rst` for usage examples.
     
     References
     ----------
-    See `README.md` for a list of references.
+    See `README.rst` for a list of references.
 
     """
     if not isinstance(segmap, photutils.SegmentationImage):
