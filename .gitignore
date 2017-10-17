@@ -9,6 +9,10 @@ plots/*
 # Profiling
 *.prof
 
+# Packaging
+dist/*
+statmorph.egg-info/*
+
 # Other, custom
 *.sh
 *.txt
