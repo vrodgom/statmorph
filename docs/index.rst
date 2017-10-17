@@ -9,23 +9,19 @@ statmorph
 The statmorph library is a tool for calculating non-parametric morphologies
 of galaxy images. The main reference of this implementation is
 `Lotz et al. (2004) <http://adsabs.harvard.edu/abs/2004AJ....128..163L>`_,
-but a more complete list can be found in the README.
+but a more complete list can be found in the
+`README <https://github.com/vrodgom/statmorph/blob/master/README.rst>`_.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Contents:
    
    description
    tutorial
-
-API Reference
-=============
-
-.. toctree::
-
    api
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
