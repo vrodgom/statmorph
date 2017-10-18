@@ -424,7 +424,6 @@ class SourceMorphology(object):
 
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements
-        self.flag_segmap = 0  # checks consistency between segmaps
         self.flag_sersic = 0  # attempts to flag bad Sersic fits
 
         # Position of the "postage stamp" cutout:
@@ -529,23 +528,23 @@ class SourceMorphology(object):
 
     def _check_segmaps(self):
         """
-        Compare Gini segmap, MID segmap and shape asymmetry segmap,
-        and set flag=1 if they are very different from each other.
+        Compare Gini segmap and MID segmap; set flat=1 if they are
+        very different from each other.
         """
         area_max = max(np.sum(self._segmap_gini),
-                       np.sum(self._segmap_mid),
-                       np.sum(self._segmap_shape_asym))
+                       np.sum(self._segmap_mid))
         area_overlap = np.sum(self._segmap_gini &
-                              self._segmap_mid &
-                              self._segmap_shape_asym)
+                              self._segmap_mid)
         if area_max == 0:
             warnings.warn('Segmaps are empty!', AstropyUserWarning)
-            self.flag_segmap = 1
+            self.flag = 1
             return
 
         area_ratio = area_overlap / float(area_max)
         if area_ratio < self._segmap_overlap_ratio:
-            self.flag_segmap = 1
+            warnings.warn('Gini and MID segmaps are quite different.',
+                          AstropyUserWarning)
+            self.flag = 1
 
     @lazyproperty
     def xc_centroid(self):
@@ -2028,8 +2027,11 @@ class SourceMorphology(object):
         # We also include the background noise
         weights[locs] = 1.0 / np.sqrt(np.abs(variance[locs]) + self._sky_sigma**2)
 
-        # Only fit main segment of shape asymmetry segmap
+        # Only fit the main segment of the shape asymmetry segmap
         weights[~self._segmap_shape_asym] = 0.0
+
+        #~ # Only fit the main segment of the Gini segmap
+        #~ weights[~self._segmap_gini] = 0.0
 
         # Initial guess
         if self.concentration < 3.0:

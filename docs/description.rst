@@ -41,18 +41,18 @@ The output of the `source_morphology` function is a list of
 `SourceMorphology` objects, one for each labeled source, in which the
 different morphological measurements can be accessed as keys or attributes.
 
-Apart from the morphological parameters, statmorph also produces three
+Apart from the morphological parameters, statmorph also produces two
 different "bad measurement" flags (where values of 0 and 1 indicate good
 and bad measurements, respectively):
 
 1. ``flag`` : indicates a problem with the basic morphological measurements
    (e.g., a discontinuous Gini segmentation map).
-2. ``flag_segmap`` : indicates when the 3 segmentation maps (Gini, MID,
-   shape asymmetry) are very different from each other.
-3. ``flag_sersic`` : indicates if there was a problem/warning during the
+2. ``flag_sersic`` : indicates if there was a problem/warning during the
    Sersic profile fitting. 
 
-In general, users should enforce ``flag == 0``. The other two are optional.
+In general, users should enforce ``flag == 0``, while ``flag_sersic == 0``
+should be applied only when actually interested in Sersic fits (which can
+fail for merging galaxies and other "irregular" objects).
 
 In addition to the flags described above, the output should
 not be trusted when any of the measured distance scales (Petrosian radii,

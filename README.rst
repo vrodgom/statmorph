@@ -1,15 +1,15 @@
 statmorph
 =========
 
-Python code for calculating non-parametric morphological parameters of
+Python code for calculating non-parametric morphological diagnostics of
 galaxy images.
 
 Brief description
 -----------------
 
 For a given image and a corresponding segmentation map indicating the
-source(s) of interest (labeled by positive integer numbers), this code
-calculates the following morphological parameters for each source:
+source(s) of interest, this code calculates the following morphological
+statistics for each source:
 
 - Gini-M20 statistics (Lotz et al. 2004)
 - Concentration, Asymmetry and Smoothness (CAS) statistics (Conselice 2003;
@@ -22,7 +22,7 @@ calculates the following morphological parameters for each source:
   half-light radii, etc.)
 
 Although the Sersic index is, by definition, the opposite of a non-parametric
-morphological parameter, it is included for comparison purposes.
+morphological quantity, it is included anyway due to its popularity.
 
 This Python implementation is largely based on IDL code originally
 written by Jennifer Lotz, Peter Freeman and Mike Peth, as well as Python code by

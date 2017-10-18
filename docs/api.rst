@@ -2,7 +2,7 @@
 API Reference
 =============
 
-.. autoclass:: statmorph.statmorph.SourceMorphology
+.. autoclass:: statmorph.SourceMorphology
    :members:
 
-.. autofunction:: statmorph.statmorph.source_morphology
+.. autofunction:: statmorph.source_morphology
