@@ -338,7 +338,7 @@ class SourceMorphology(object):
     petro_extent_ellip : float, optional
         The inner radius, in units of the Petrosian "radius", of the
         elliptical aperture used to estimate the sky background in the
-        shape asymmetry calculation. The default value is 1.5.
+        shape asymmetry calculation. The default value is 2.0.
     boxcar_size_shape_asym : float, optional
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
@@ -871,8 +871,8 @@ class SourceMorphology(object):
     @lazyproperty
     def _segmap_gini(self):
         """
-        Create a new segmentation map (relative to the "Gini" cutout)
-        based on the Petrosian "radius".
+        Create a new segmentation map (relative to the "postage stamp")
+        based on the elliptical Petrosian radius.
         """
         # Smooth image
         petro_sigma = self._petro_fraction_gini * self.rpetro_ellip
@@ -1806,9 +1806,9 @@ class SourceMorphology(object):
         representative of the background. In order to avoid amplifying
         uncertainties from the central regions of the galaxy profile,
         we assume that such an aperture has inner and outer radii
-        equal to 2 and 4 times the elliptical Petrosian "radius"
-        (this can be changed by the user). Also, we define the center
-        as the pixel that minimizes the asymmetry, instead of the
+        equal to multiples of the elliptical Petrosian radius
+        (which can be specified by the user). Also, we define the center
+        as the point that minimizes the asymmetry, instead of the
         brightest pixel.
 
         """
@@ -2027,11 +2027,8 @@ class SourceMorphology(object):
         # We also include the background noise
         weights[locs] = 1.0 / np.sqrt(np.abs(variance[locs]) + self._sky_sigma**2)
 
-        # Only fit the main segment of the shape asymmetry segmap
-        weights[~self._segmap_shape_asym] = 0.0
-
-        #~ # Only fit the main segment of the Gini segmap
-        #~ weights[~self._segmap_gini] = 0.0
+        # Only fit the main segment of the Gini segmap
+        weights[~self._segmap_gini] = 0.0
 
         # Initial guess
         if self.concentration < 3.0:
