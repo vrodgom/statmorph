@@ -2027,8 +2027,8 @@ class SourceMorphology(object):
         # We also include the background noise
         weights[locs] = 1.0 / np.sqrt(np.abs(variance[locs]) + self._sky_sigma**2)
 
-        # Only fit the main segment of the Gini segmap
-        weights[~self._segmap_gini] = 0.0
+        # Only fit the main segment of the shape asymmetry segmap
+        weights[~self._segmap_shape_asym] = 0.0
 
         # Initial guess
         if self.concentration < 3.0:
