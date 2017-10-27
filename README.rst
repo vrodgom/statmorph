@@ -61,8 +61,8 @@ photutils installed, statmorph can also be installed via PyPI:
 
     pip install statmorph
 
-Finally, for a manual installation, download the latest release from the
-`GitHub repository <https://github.com/vrodgom/statmorph>`_,
+Finally, if you prefer a manual installation, download the latest release
+from the `GitHub repository <https://github.com/vrodgom/statmorph>`_,
 extract the contents of the zipfile, and run:
 
 .. code:: bash
@@ -135,7 +135,6 @@ Disclaimer
 This package is not meant to be the "official" implementation of any
 of the morphological statistics described above. Please contact the
 authors of the original publications for a "reference" implementation.
-Also see the `LICENSE`.
 
 Licensing
 ---------

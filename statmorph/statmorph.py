@@ -282,8 +282,8 @@ class SourceMorphology(object):
         A 2D array representing the PSF, where the central pixel
         corresponds to the center of the PSF. Typically, including
         this keyword argument will make the code run slower by a
-        factor of a few, although the resulting Sersic fits will
-        in principle be more correct.
+        factor of a few, depending on the size of the PSF, but the
+        resulting Sersic fits will in principle be more correct.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
