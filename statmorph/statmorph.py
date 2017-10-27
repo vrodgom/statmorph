@@ -1621,9 +1621,8 @@ class SourceMorphology(object):
                 break
             elif mid_stepsize < 1e-3:
                 warnings.warn('[M statistic] Single clump!', AstropyUserWarning)
-                # This usually happens when the source is a star,
-                # so we turn on the "bad measurement" flag.
-                self.flag = 1
+                # This sometimes happens when the source is a star, so the user
+                # might want to discard M=0 cases, depending on the dataset.
                 return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
