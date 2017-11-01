@@ -1473,13 +1473,11 @@ class SourceMorphology(object):
         # mean flux of "newly added" pixels never reaches the
         # target value, at least within the original segmap.
         # In these cases we simply assume that the MID segmap
-        # is the original segmap (and turn the "bad measurement"
-        # flag on).
+        # is equal to the Gini segmap.
         if self._segmap_mid_function(0.0) > 0.0:
-            self.flag = 1
-            warnings.warn('[segmap_mid] Using original segmap.',
+            warnings.warn('segmap_mid is undefined; using segmap_gini instead.',
                           AstropyUserWarning)
-            return ~self._mask_stamp_no_bg
+            return self._segmap_gini
         
         # Find appropriate quantile using numerical solver
         q_min = 0.0
