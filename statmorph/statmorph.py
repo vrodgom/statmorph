@@ -43,7 +43,8 @@ def _mode(a, axis=None):
 
 def _local_variance(image):
     """
-    Calculate a map of the local variance for each pixel.
+    Calculate a map of the local variance around each pixel, based on
+    its 8 adjacent neighbors
 
     Notes
     -----
@@ -274,10 +275,18 @@ class SourceMorphology(object):
     mask : array-like (bool), optional
         A 2D array with the same size as ``image``, where pixels
         set to ``True`` are ignored from all calculations.
-    variance : array-like, optional
-        A 2D array with the same size as ``image`` with the
-        values of the variance (RMS^2). This is required
-        in order to calculate the signal-to-noise correctly.
+    weightmap : array-like, optional
+        Also known as the "sigma" image, this is a 2D array with the
+        same size and units as ``image`` that contains one standard
+        deviation of the value at each pixel (which is related to the
+        Poisson noise). Note that SExtractor and other software
+        sometimes produce a weight map in units of the variance (RMS^2)
+        or the inverse variance (1/RMS^2).
+    gain : scalar, optional
+        A conversion factor that is multiplied by the image data to
+        obtain counts/pixel (the counts can be electrons or simulation
+        particles, depending on the type of image). This is only used
+        when ``weightmap`` is not provided.
     psf : array-like, optional
         A 2D array representing the PSF, where the central pixel
         corresponds to the center of the PSF. Typically, including
@@ -356,15 +365,16 @@ class SourceMorphology(object):
     See `README.rst` for a list of references.
 
     """
-    def __init__(self, image, segmap, label, mask=None, variance=None, psf=None,
-                 cutout_extent=1.5, remove_outliers=True, n_sigma_outlier=10,
-                 annulus_width=1.0, eta=0.2, petro_fraction_gini=0.2,
-                 border_size=4, skybox_size=32, petro_extent_circ=1.5,
-                 petro_fraction_cas=0.25, boxcar_size_mid=3.0,
-                 niter_bh_mid=5, sigma_mid=1.0, petro_extent_ellip=2.0,
-                 boxcar_size_shape_asym=3.0, sersic_maxiter=500,
-                 segmap_overlap_ratio=0.5):
-        self._variance = variance
+    def __init__(self, image, segmap, label, mask=None, weightmap=None,
+                 gain=None, psf=None, cutout_extent=1.5, remove_outliers=True,
+                 n_sigma_outlier=10, annulus_width=1.0, eta=0.2,
+                 petro_fraction_gini=0.2, border_size=4, skybox_size=32,
+                 petro_extent_circ=1.5, petro_fraction_cas=0.25,
+                 boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
+                 petro_extent_ellip=2.0, boxcar_size_shape_asym=3.0,
+                 sersic_maxiter=500, segmap_overlap_ratio=0.5):
+        self._weightmap = weightmap
+        self._gain = gain
         self._psf = psf
         self._cutout_extent = cutout_extent
         self._remove_outliers = remove_outliers
@@ -388,13 +398,12 @@ class SourceMorphology(object):
             segmap = photutils.SegmentationImage(segmap)
 
         # Check sanity of input data
+        assert segmap.shape == image.shape
         if mask is None:
             mask = np.zeros(image.shape, dtype=np.bool8)
-        if self._variance is None:
-            self._variance = _local_variance(image)
-        assert segmap.shape == image.shape
-        assert self._variance.shape == image.shape
         assert mask.shape == image.shape
+        if self._weightmap is not None:
+            assert self._weightmap.shape == image.shape
 
         # Normalize PSF
         if self._psf is not None:
@@ -402,13 +411,15 @@ class SourceMorphology(object):
 
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
-        locs_invalid = ~np.isfinite(image) | ~np.isfinite(self._variance)
-        self._variance[locs_invalid] = 0.0
+        locs_invalid = ~np.isfinite(image)
+        if self._weightmap is not None:
+            locs_invalid = locs_invalid | ~np.isfinite(self._weightmap)
+            self._weightmap[locs_invalid] = 0.0
         image[locs_invalid] = 0.0
         mask = mask | locs_invalid
 
-        # Check that the main galaxy segment has a positive flux sum:
-        valid_locs = np.isfinite(image) & (segmap == label) & (~mask)
+        # Check that the labeled galaxy segment has a positive flux sum:
+        valid_locs = (segmap == label) & (~mask)
         assert np.sum(image[valid_locs]) > 0
 
         # Before doing anything else, set badpixels (outliers) to zero:
@@ -419,7 +430,8 @@ class SourceMorphology(object):
             mask = mask | badpixels
             self.num_badpixels = np.sum(badpixels)
 
-        # The following object stores some important data:
+        # Avoid duplication by storing some important data inside an
+        # associated photutils.SourceProperties object:
         self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
         # These flags will be modified during the calculations:
@@ -446,7 +458,20 @@ class SourceMorphology(object):
         self._x_maxval_stamp = self._props.maxval_xpos.value - self._xmin_stamp
         self._y_maxval_stamp = self._props.maxval_ypos.value - self._ymin_stamp
 
-        # For now, evaluate all "lazy" properties during initialization:
+        # ------------------------------------------------------------------
+        # NOTE: no morphology calculations have been done so far, but
+        # this will change below this line. Modify this __init__ with care.
+        # ------------------------------------------------------------------
+
+        # Create weight map, if necessary
+        if self._weightmap is None:
+            if self._gain is None:
+                raise Exception('Must provide either weightmap or gain.')
+            else:
+                assert gain > 0
+                self._weightmap = np.sqrt(np.abs(image)/gain + self._sky_sigma**2)
+
+        # For simplicity, evaluate all "lazy" properties at once:
         self._calculate_morphology()
 
         # Check segmaps and set flag=1 if they are very different
@@ -991,16 +1016,16 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
-        variance = self._variance[self._slice_stamp]
-        if np.any(variance < 0):
-            warnings.warn('[sn_per_pixel] Some negative variance values.',
+        weightmap = self._weightmap[self._slice_stamp]
+        if np.any(weightmap < 0):
+            warnings.warn('[sn_per_pixel] Some negative weightmap values.',
                           AstropyUserWarning)
-            variance = np.abs(variance)
+            weightmap = np.abs(weightmap)
 
         locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
         pixelvals = self._cutout_stamp_maskzeroed[locs]
         snp = np.mean(
-            pixelvals / np.sqrt(variance[locs] + self._sky_sigma**2))
+            pixelvals / np.sqrt(weightmap[locs]**2 + self._sky_sigma**2))
         if not np.isfinite(snp):
             self.flag = 1
             snp = -99.0  # invalid
@@ -2016,16 +2041,16 @@ class SourceMorphology(object):
         # Prepare data for fitting
         z = image.copy()
         y, x = np.mgrid[0:ny, 0:nx]
-        variance = self._variance[self._slice_stamp]
-        # Pixels with variance=0 are suspicious, so we exclude them
+        weightmap = self._weightmap[self._slice_stamp]
+        # Pixels with weightmap=0 are suspicious, so we exclude them
         # from the fit (set weight=0).
-        weights = np.zeros_like(z)
-        locs = variance != 0
+        fit_weights = np.zeros_like(z)
+        locs = weightmap != 0
         # We also include the background noise
-        weights[locs] = 1.0 / np.sqrt(np.abs(variance[locs]) + self._sky_sigma**2)
+        fit_weights[locs] = 1.0 / np.sqrt(weightmap[locs]**2 + self._sky_sigma**2)
 
         # Only fit the main segment of the shape asymmetry segmap
-        weights[~self._segmap_shape_asym] = 0.0
+        fit_weights[~self._segmap_shape_asym] = 0.0
 
         # Initial guess
         if self.concentration < 3.0:
@@ -2056,7 +2081,7 @@ class SourceMorphology(object):
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         with warnings.catch_warnings(record=True) as w:
-            sersic_model = fit_sersic(sersic_init, x, y, z, weights=weights,
+            sersic_model = fit_sersic(sersic_init, x, y, z, weights=fit_weights,
                                       maxiter=self._sersic_maxiter)
             if len(w) > 0:
                 warnings.warn('[sersic] The fit may be unsuccessful.',
