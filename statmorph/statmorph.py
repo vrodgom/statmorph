@@ -401,6 +401,7 @@ class SourceMorphology(object):
         assert segmap.shape == image.shape
         if mask is None:
             mask = np.zeros(image.shape, dtype=np.bool8)
+        mask = np.bool8(mask)
         assert mask.shape == image.shape
         if self._weightmap is not None:
             assert self._weightmap.shape == image.shape
@@ -1024,8 +1025,9 @@ class SourceMorphology(object):
 
         locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
         pixelvals = self._cutout_stamp_maskzeroed[locs]
-        snp = np.mean(
-            pixelvals / np.sqrt(weightmap[locs]**2 + self._sky_sigma**2))
+        # The sky background noise is already included in the weightmap:
+        snp = np.mean(pixelvals / weightmap[locs])
+
         if not np.isfinite(snp):
             self.flag = 1
             snp = -99.0  # invalid
@@ -2046,8 +2048,8 @@ class SourceMorphology(object):
         # from the fit (set weight=0).
         fit_weights = np.zeros_like(z)
         locs = weightmap != 0
-        # We also include the background noise
-        fit_weights[locs] = 1.0 / np.sqrt(weightmap[locs]**2 + self._sky_sigma**2)
+        # The sky background noise is already included in the weightmap:
+        fit_weights[locs] = 1.0 / weightmap[locs]
 
         # Only fit the main segment of the shape asymmetry segmap
         fit_weights[~self._segmap_shape_asym] = 0.0
