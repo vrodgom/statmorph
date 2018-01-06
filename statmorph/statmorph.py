@@ -7,6 +7,7 @@ of galaxy images.
 from __future__ import absolute_import, division, print_function
 
 import warnings
+import time
 import numpy as np
 import scipy.optimize as opt
 import scipy.ndimage as ndi
@@ -394,6 +395,13 @@ class SourceMorphology(object):
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
 
+        # For record-keeping, store dimensions of original image
+        self.nx = image.shape[1]
+        self.ny = image.shape[0]
+
+        # Measure runtime
+        start = time.time()
+
         if not isinstance(segmap, photutils.SegmentationImage):
             segmap = photutils.SegmentationImage(segmap)
 
@@ -420,7 +428,7 @@ class SourceMorphology(object):
         mask = mask | locs_invalid
 
         # Check that the labeled galaxy segment has a positive flux sum:
-        valid_locs = (segmap == label) & (~mask)
+        valid_locs = (segmap.data == label) & (~mask)
         assert np.sum(image[valid_locs]) > 0
 
         # Before doing anything else, set badpixels (outliers) to zero:
@@ -477,6 +485,9 @@ class SourceMorphology(object):
 
         # Check segmaps and set flag=1 if they are very different
         self._check_segmaps()
+
+        # Save runtime
+        self.runtime = time.time() - start
 
     def __getitem__(self, key):
         return getattr(self, key)
