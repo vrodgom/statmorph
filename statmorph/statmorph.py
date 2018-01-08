@@ -2073,6 +2073,14 @@ class SourceMorphology(object):
             self.flag_sersic = 1
             return sersic_init
 
+        # Since model fitting can be computationally expensive (especially
+        # with a large PSF), only do it when the other measurements are OK.
+        if self.flag == 1:
+            warnings.warn('[sersic] Skipping Sersic fit...',
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+            return sersic_init
+
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         with warnings.catch_warnings(record=True) as w:
