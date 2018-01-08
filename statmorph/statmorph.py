@@ -319,13 +319,9 @@ class SourceMorphology(object):
         In the Gini calculation, this is the fraction of the Petrosian
         "radius" used as a smoothing scale in order to define the pixels
         that belong to the galaxy. The default value is 0.2.
-    border_size : int, optional
-        The number of pixels that are skipped from each border of the
-        "postage stamp" image cutout when finding the skybox. The
-        default is 5 pixels.
     skybox_size : int, optional
-        The size in pixels of the (square) "skybox" used to measure
-        properties of the image background.
+        The target size (in pixels) of the "skybox" used to characterize
+        the sky background.
     petro_extent_circ : float, optional
         The radius of the circular aperture used for the asymmetry
         calculation, in units of the circular Petrosian radius. The
@@ -369,7 +365,7 @@ class SourceMorphology(object):
     def __init__(self, image, segmap, label, mask=None, weightmap=None,
                  gain=None, psf=None, cutout_extent=1.5, remove_outliers=True,
                  n_sigma_outlier=10, annulus_width=1.0, eta=0.2,
-                 petro_fraction_gini=0.2, border_size=4, skybox_size=32,
+                 petro_fraction_gini=0.2, skybox_size=32,
                  petro_extent_circ=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_ellip=2.0, boxcar_size_shape_asym=3.0,
@@ -383,7 +379,6 @@ class SourceMorphology(object):
         self._annulus_width = annulus_width
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
-        self._border_size = border_size
         self._skybox_size = skybox_size
         self._petro_extent_circ = petro_extent_circ
         self._petro_fraction_cas = petro_fraction_cas
@@ -1054,7 +1049,7 @@ class SourceMorphology(object):
         """
         Try to find a region of the sky that only contains background.
         
-        In principle, a more accurate approach could be adopted
+        In principle, a more accurate approach is possible
         (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
         segmap = self._props._segment_img.data[self._slice_stamp]
@@ -1062,38 +1057,25 @@ class SourceMorphology(object):
         mask = np.zeros(segmap.shape, dtype=np.bool8)
         if self._props._mask is not None:
             mask = self._props._mask[self._slice_stamp]
-
-        # If segmap is smaller than borders, there is nothing to do.
-        # This will result in NaN values for skybox calculations.
-        if (nx < 2 * self._border_size) or (ny < 2 * self._border_size):
-            self.flag = 1
-            warnings.warn('[skybox] Original segmap is too small.',
-                          AstropyUserWarning)
-            return (slice(0, 0), slice(0, 0))
-
+        
+        cur_skybox_size = self._skybox_size
         while True:
-            for i in range(self._border_size,
-                           ny - self._border_size - self._skybox_size):
-                for j in range(self._border_size,
-                               nx - self._border_size - self._skybox_size):
-                    boxslice = (slice(i, i + self._skybox_size),
-                                slice(j, j + self._skybox_size))
+            for i in range(0, ny - cur_skybox_size):
+                for j in range(0, nx - cur_skybox_size):
+                    boxslice = (slice(i, i + cur_skybox_size),
+                                slice(j, j + cur_skybox_size))
                     if np.all(segmap[boxslice] == 0) and np.all(~mask[boxslice]):
                         return boxslice
 
             # If we got here, a skybox of the given size was not found.
-            if self._skybox_size < self._border_size:
+            if cur_skybox_size <= 1:
                 self.flag = 1
-                warnings.warn('[skybox] Forcing skybox to lower-left corner.',
-                              AstropyUserWarning)
-                boxslice = (
-                    slice(self._border_size, self._border_size + self._skybox_size),
-                    slice(self._border_size, self._border_size + self._skybox_size))
-                return boxslice
+                warnings.warn('[skybox] Skybox not found.', AstropyUserWarning)
+                return (slice(0, 0), slice(0, 0))
             else:
-                self._skybox_size //= 2
+                cur_skybox_size //= 2
                 warnings.warn('[skybox] Reducing skybox size to %d.' % (
-                              self._skybox_size), AstropyUserWarning)
+                              cur_skybox_size), AstropyUserWarning)
 
         # Should not reach this point.
         raise AssertionError
