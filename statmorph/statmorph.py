@@ -2083,16 +2083,13 @@ class SourceMorphology(object):
 
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
-        with warnings.catch_warnings(record=True) as w:
-            sersic_model = fit_sersic(sersic_init, x, y, z, weights=fit_weights,
-                                      maxiter=self._sersic_maxiter)
-            if len(w) > 0:
-                warnings.warn('[sersic] The fit may be unsuccessful.',
-                              AstropyUserWarning)
-                print('[sersic] Message from scipy.optimize:')
-                print(fit_sersic.fit_info['message'])
-                self.flag_sersic = 1
-        
+        sersic_model = fit_sersic(sersic_init, x, y, z, weights=fit_weights,
+                                  maxiter=self._sersic_maxiter, acc=1e-5)
+        if fit_sersic.fit_info['ierr'] not in [1, 2, 3, 4]:
+            warnings.warn("fit_info['message']: " + fit_sersic.fit_info['message'],
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+
         return sersic_model
 
     @lazyproperty
