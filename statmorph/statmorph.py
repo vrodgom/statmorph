@@ -926,10 +926,18 @@ class SourceMorphology(object):
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
         
-        # In some rare cases (e.g., the disastrous J020218.5+672123_g.fits.gz),
+        # In some rare cases (e.g., Pan-STARRS J020218.5+672123_g.fits.gz),
         # this results in an empty segmap, so there is nothing to do.
         if num_features == 0:
             warnings.warn('[segmap_gini] Empty Gini segmap!',
+                          AstropyUserWarning)
+            self.flag = 1
+            return above_threshold
+
+        # In other cases (e.g., object 110 from CANDELS/GOODS-S WFC/F160W),
+        # the Gini segmap occupies the entire image, which is also not OK.
+        if np.sum(above_threshold) == cutout_smooth.size:
+            warnings.warn('[segmap_gini] Full Gini segmap!',
                           AstropyUserWarning)
             self.flag = 1
             return above_threshold
