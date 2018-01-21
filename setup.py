@@ -32,7 +32,8 @@ setup(
     ],
     keywords='galaxy morphology extragalactic astronomy',
     packages=['statmorph'],
-    install_requires=['scikit-image>=0.13',
+    install_requires=['scipy>=0.19',
+                      'scikit-image>=0.13',
                       'astropy>=2.0',
                       'photutils>=0.3'],
 )

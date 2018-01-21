@@ -9,21 +9,28 @@ Here we briefly describe the input and output of this function.
 Input
 -----
 
-The only two *required* input parameters are the following:
+The main two *required* input parameters are the following:
 
 - ``image`` : The image (2D array) containing the source(s) of interest.
 - ``segmap`` : A segmentation map (2D array) of the same size as the image with
   different sources labeled by different positive integer numbers. A value of
   zero is reserved for the background.
 
+In addition, *one* of the following two parameters is also required:
+
+- ``weightmap`` : A 2D array (of the same size as the image) representing one
+  standard deviation of each pixel value. This is also known as the "sigma"
+  image and is related to the Poisson noise. If the weight map is not
+  provided by the user, then it is computed internally using the ``gain``
+  keyword argument.
+- ``gain`` : A scalar that, when multiplied by the image, converts the image
+  units into counts/pixel. This is required when ``weightmap`` is not
+  provided by the user.
+
 Optionally, the function can also accept:
 
 - ``mask`` : A 2D array (of the same size as the image) indicating the pixels
   that should be masked (e.g., to remove contamination from foreground stars).
-- ``variance`` : A 2D array (of the same size as the image) representing the
-  local variance of the image. This is usually the inverse of the "weight" map
-  produced by *SExtractor* and similar software. If the variance is not
-  provided, statmorph will calculate it.
 - ``psf`` : A 2D array (usually smaller than the image) with the point spread
   function (PSF). This is convolved with the Sersic model in every step of the
   profile fitting, and typically makes the code slower by a factor of 2-3.
@@ -47,7 +54,7 @@ and bad measurements, respectively):
 
 1. ``flag`` : indicates a problem with the basic morphological measurements
    (e.g., a discontinuous Gini segmentation map).
-2. ``flag_sersic`` : indicates if there was a problem/warning during the
+2. ``flag_sersic`` : indicates if there was a problem during the
    Sersic profile fitting. 
 
 In general, users should enforce ``flag == 0``, while ``flag_sersic == 0``
