@@ -447,6 +447,10 @@ class SourceMorphology(object):
         self.flag = 0  # attempts to flag bad measurements
         self.flag_sersic = 0  # attempts to flag bad Sersic fits
 
+        # If something goes wrong, use centroid instead of asymmetry center
+        # (better performance in some pathological cases, e.g. GOODS-S 32143):
+        self._use_centroid = False
+
         # Position of the "postage stamp" cutout:
         self._xmin_stamp = self._slice_stamp[1].start
         self._ymin_stamp = self._slice_stamp[0].start
@@ -1200,6 +1204,7 @@ class SourceMorphology(object):
             warnings.warn('[asym_center] Minimizer tried to exit bounds.',
                           AstropyUserWarning)
             self.flag = 1
+            self._use_centroid = True
             # Return high value to keep minimizer within range:
             return 100.0
 
@@ -1269,6 +1274,12 @@ class SourceMorphology(object):
         center_asym = opt.fmin(self._asymmetry_function, center_0,
                                args=(self._cutout_stamp_maskzeroed, 'cas'),
                                xtol=1e-6, disp=0)
+
+        # Check if flag was activated by _asymmetry_function:
+        if self._use_centroid:
+            warnings.warn('Using centroid instead of asymmetry center.',
+                          AstropyUserWarning)
+            center_asym = center_0
 
         # Print warning if center is masked
         ic, jc = int(center_asym[1]), int(center_asym[0])
