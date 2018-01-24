@@ -302,6 +302,7 @@ class SourceMorphology(object):
     min_cutout_size : int, optional
         The minimum size of the cutout, in case ``cutout_extent`` times
         the size of the minimal bounding box is smaller than this.
+        Any given value will be truncated to an even number.
     remove_outliers : bool, optional
         If ``True``, remove outlying pixels as described in Lotz et al.
         (2004), using the parameter ``n_sigma_outlier``.
@@ -367,7 +368,7 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, weightmap=None,
-                 gain=None, psf=None, cutout_extent=1.5, min_cutout_size=120,
+                 gain=None, psf=None, cutout_extent=1.5, min_cutout_size=48,
                  remove_outliers=True, n_sigma_outlier=10, annulus_width=1.0,
                  eta=0.2, petro_fraction_gini=0.2, skybox_size=32,
                  petro_extent_circ=1.5, petro_fraction_cas=0.25,
@@ -378,7 +379,7 @@ class SourceMorphology(object):
         self._gain = gain
         self._psf = psf
         self._cutout_extent = cutout_extent
-        self._min_cutout_size = min_cutout_size
+        self._min_cutout_size = min_cutout_size - min_cutout_size % 2
         self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
         self._annulus_width = annulus_width
@@ -394,10 +395,6 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
-
-        # For record-keeping, store dimensions of original image
-        self.nx = image.shape[1]
-        self.ny = image.shape[0]
 
         # Measure runtime
         start = time.time()
@@ -456,6 +453,10 @@ class SourceMorphology(object):
         self._ymin_stamp = self._slice_stamp[0].start
         self._xmax_stamp = self._slice_stamp[1].stop - 1
         self._ymax_stamp = self._slice_stamp[0].stop - 1
+
+        # For record-keeping, store dimensions of the cutout
+        self.nx = self._xmax_stamp + 1 - self._xmin_stamp
+        self.ny = self._ymax_stamp + 1 - self._ymin_stamp
 
         # Centroid of the source relative to the "postage stamp" cutout:
         self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
@@ -619,12 +620,13 @@ class SourceMorphology(object):
         dist = int(dist * self._cutout_extent)
         
         # Make sure that cutout size is at least ``min_cutout_size``
+        assert self._min_cutout_size >= 2
         dist = max(dist, self._min_cutout_size // 2)
 
         # Make cutout
         ny, nx = self._props._data.shape
-        slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist+1)),
-                       slice(max(0, xc-dist), min(nx, xc+dist+1)))
+        slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist)),
+                       slice(max(0, xc-dist), min(nx, xc+dist)))
 
         return slice_stamp
 
@@ -2087,15 +2089,11 @@ class SourceMorphology(object):
         z = image.copy()
         y, x = np.mgrid[0:ny, 0:nx]
         weightmap = self._weightmap[self._slice_stamp]
-        # Pixels with weightmap=0 are suspicious, so we exclude them
-        # from the fit (set weight=0).
+        # Exclude pixels with image == 0 or weightmap == 0 from the fit.
         fit_weights = np.zeros_like(z)
-        locs = weightmap != 0
+        locs = (image != 0) & (weightmap != 0)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
-
-        # Only fit the main segment of the shape asymmetry segmap
-        fit_weights[~self._segmap_shape_asym] = 0.0
 
         # Initial guess
         if self.concentration < 3.0:
@@ -2197,7 +2195,8 @@ class SourceMorphology(object):
         The orientation (counterclockwise, in radians) of the
         2D Sersic fit (`astropy.modeling.models.Sersic2D`).
         """
-        return self._sersic_model.theta.value
+        theta = self._sersic_model.theta.value
+        return theta - np.floor(theta/np.pi) * np.pi
 
 
 def source_morphology(image, segmap, **kwargs):
