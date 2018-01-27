@@ -108,10 +108,6 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     """
     flag = 0  # flag=1 indicates a problem
 
-    # Make sure that center is at center of pixel (otherwise,
-    # very compact objects can become problematic):
-    center = np.floor(center) + 0.5
-
     ap_total = photutils.CircularAperture(center, r_total)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
@@ -173,10 +169,6 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     semimajor axis ``a_total``.
     """
     flag = 0  # flag=1 indicates a problem
-
-    # Make sure that center is at center of pixel (otherwise,
-    # very compact objects can become problematic):
-    center = np.floor(center) + 0.5
 
     b_total = a_total / elongation
     ap_total = photutils.EllipticalAperture(center, a_total, b_total, theta)
@@ -543,8 +535,8 @@ class SourceMorphology(object):
             'rmax_ellip',
             'rhalf_circ',
             'rhalf_ellip',
-            'r_20',
-            'r_80',
+            'r20',
+            'r80',
             'gini',
             'm20',
             'gini_m20_bulge',
@@ -1419,14 +1411,14 @@ class SourceMorphology(object):
         return r
 
     @lazyproperty
-    def r_20(self):
+    def r20(self):
         """
         The radius that contains 20% of the light.
         """
         return self._radius_at_fraction_of_total_cas(0.2)
 
     @lazyproperty
-    def r_80(self):
+    def r80(self):
         """
         The radius that contains 80% of the light.
         """
@@ -1437,10 +1429,10 @@ class SourceMorphology(object):
         """
         Calculate concentration as described in Lotz et al. (2004).
         """
-        if (self.r_20 == -99.0) or (self.r_80 == -99.0):
+        if (self.r20 == -99.0) or (self.r80 == -99.0):
             C = -99.0  # invalid
         else:
-            C = 5.0 * np.log10(self.r_80 / self.r_20)
+            C = 5.0 * np.log10(self.r80 / self.r20)
         
         return C
 
@@ -1883,8 +1875,8 @@ class SourceMorphology(object):
         """
         ny, nx = self._cutout_stamp_maskzeroed.shape
 
-        # Center at (center of) pixel that minimizes asymmetry
-        center = np.floor(self._asymmetry_center) + 0.5
+        # Center at pixel that minimizes asymmetry
+        center = self._asymmetry_center
 
         # Create a circular annulus around the center
         # that only contains background sky (hopefully).
@@ -1951,8 +1943,8 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
 
-        # Center at (center of) pixel that minimizes asymmetry
-        xc, yc = np.floor(self._asymmetry_center) + 0.5
+        # Center at pixel that minimizes asymmetry
+        xc, yc = self._asymmetry_center
 
         # Distances from all pixels to the center
         ypos, xpos = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
@@ -1978,8 +1970,8 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
 
-        # Center at (center of) pixel that minimizes asymmetry
-        xc, yc = np.floor(self._asymmetry_center) + 0.5
+        # Center at pixel that minimizes asymmetry
+        xc, yc = self._asymmetry_center
 
         theta = self.orientation
         y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
