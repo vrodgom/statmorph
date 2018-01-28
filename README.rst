@@ -7,9 +7,9 @@ galaxy images.
 Brief description
 -----------------
 
-For a given image and a corresponding segmentation map indicating the
-source(s) of interest, this code calculates the following morphological
-statistics for each source:
+For a given (background-subtracted) image and a corresponding segmentation map
+indicating the source(s) of interest, this code calculates the following
+morphological statistics for each source:
 
 - Gini-M20 statistics (Lotz et al. 2004)
 - Concentration, Asymmetry and Smoothness (CAS) statistics (Conselice 2003;
@@ -25,8 +25,8 @@ Although the Sersic index is, by definition, the opposite of a non-parametric
 morphological quantity, it is included anyway due to its popularity.
 
 This Python implementation is largely based on IDL code originally
-written by Jennifer Lotz, Peter Freeman and Mike Peth, as well as Python code by
-Greg Snyder. The main scientific reference is
+written by Jennifer Lotz, Peter Freeman and Mike Peth, as well as Python code
+by Greg Snyder. The main scientific reference is
 `Lotz et al. (2004) <http://adsabs.harvard.edu/abs/2004AJ....128..163L>`_,
 but a more complete list can be found in the *Citing* section.
 
@@ -54,8 +54,9 @@ The easiest way to install this package is within the Anaconda environment:
 If you do not have Anaconda installed yet, you should have a look at
 `astroconda <https://astroconda.readthedocs.io>`_.
 
-Alternatively, assuming that you already have scikit-image, astropy and
-photutils installed, statmorph can also be installed via PyPI:
+Alternatively, assuming that you already have recent versions of scipy,
+scikit-image, astropy and photutils installed, statmorph can also be
+installed via PyPI:
 
 .. code:: bash
 
@@ -95,7 +96,7 @@ In addition, the Python package can also be cited using its Zenodo record:
 .. image:: https://zenodo.org/badge/95412529.svg
    :target: https://zenodo.org/badge/latestdoi/95412529
 
-Finally, below we provide some of the main references that describe the
+Finally, below we provide some of the main references that introduce the
 morphological parameters implemented in this code. The following list is
 provided as a starting point and is not meant to be exhaustive. Please
 see the references within each publication for more information.

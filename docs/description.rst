@@ -11,7 +11,8 @@ Input
 
 The main two *required* input parameters are the following:
 
-- ``image`` : The image (2D array) containing the source(s) of interest.
+- ``image`` : A *background-subtracted* image (2D array) containing the
+  source(s) of interest.
 - ``segmap`` : A segmentation map (2D array) of the same size as the image with
   different sources labeled by different positive integer numbers. A value of
   zero is reserved for the background.
@@ -31,9 +32,8 @@ Optionally, the function can also accept:
 
 - ``mask`` : A 2D array (of the same size as the image) indicating the pixels
   that should be masked (e.g., to remove contamination from foreground stars).
-- ``psf`` : A 2D array (usually smaller than the image) with the point spread
-  function (PSF). This is convolved with the Sersic model in every step of the
-  profile fitting, and typically makes the code slower by a factor of 2-3.
+- ``psf`` : A 2D array (usually smaller than the image) representing the point
+  spread function (PSF). This is used when fitting Sersic profiles.
 
 In addition, almost all of the parameters used in the calculation of the
 morphological diagnostics can be specified by the user as keyword

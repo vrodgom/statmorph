@@ -1413,14 +1413,16 @@ class SourceMorphology(object):
     @lazyproperty
     def r20(self):
         """
-        The radius that contains 20% of the light.
+        The radius that contains 20% of the light within
+        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.2)
 
     @lazyproperty
     def r80(self):
         """
-        The radius that contains 80% of the light.
+        The radius that contains 80% of the light within
+        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.8)
 
