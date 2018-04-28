@@ -475,7 +475,7 @@ class SourceMorphology(object):
                 raise Exception('Must provide either weightmap or gain.')
             else:
                 assert gain > 0
-                self._weightmap = np.sqrt(np.abs(image)/gain + self._sky_sigma**2)
+                self._weightmap = np.sqrt(np.abs(image)/gain + self.sky_sigma**2)
 
         # For simplicity, evaluate all "lazy" properties at once:
         self._calculate_morphology()
@@ -1107,61 +1107,66 @@ class SourceMorphology(object):
         raise AssertionError
 
     @lazyproperty
-    def _sky_mean(self):
+    def sky_mean(self):
         """
-        Mean background value. Can be NaN when there is no skybox.
+        Mean background value. Equal to -99.0 when there is no skybox.
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            return np.nan
+            assert self.flag == 1
+            return -99.0
 
         return np.mean(bkg)
 
     @lazyproperty
-    def _sky_median(self):
+    def sky_median(self):
         """
-        Median background value. Can be NaN when there is no skybox.
+        Median background value. Equal to -99.0 when there is no skybox.
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            return np.nan
+            assert self.flag == 1
+            return -99.0
 
         return np.median(bkg)
 
     @lazyproperty
-    def _sky_sigma(self):
+    def sky_sigma(self):
         """
-        Standard deviation of the background. Can be NaN when there
+        Standard deviation of the background. Equal to -99.0 when there
         is no skybox.
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            return np.nan
+            assert self.flag == 1
+            return -99.0
 
         return np.std(bkg)
 
     @lazyproperty
     def _sky_asymmetry(self):
         """
-        Asymmetry of the background. Can be NaN when there is no
-        skybox. Note the peculiar normalization.
+        Asymmetry of the background. Equal to -99.0 when there is no
+        skybox. Note the peculiar normalization (for reference only).
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         bkg_180 = bkg[::-1, ::-1]
         if bkg.size == 0:
-            return np.nan
+            assert self.flag == 1
+            return -99.0
 
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
 
     @lazyproperty
     def _sky_smoothness(self):
         """
-        Smoothness of the background. Can be NaN when there is
-        no skybox. Note the peculiar normalization.
+        Smoothness of the background. Equal to -99.0 when there is no
+        skybox. Note the peculiar normalization (for reference only).
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            return np.nan
+            assert self.flag == 1
+            return -99.0
 
         # If the smoothing "boxcar" is larger than the skybox itself,
         # this just sets all values equal to the mean:
@@ -1250,11 +1255,11 @@ class SourceMorphology(object):
             # The shape asymmetry of the background is zero
             asym = ap_abs_diff / ap_abs_sum
         else:
-            if np.isfinite(self._sky_asymmetry):
+            if self._sky_asymmetry == -99.0:  # invalid skybox
+                asym = ap_abs_diff / ap_abs_sum
+            else:
                 ap_area = _aperture_area(ap, mask_symmetric)
                 asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
-            else:
-                asym = ap_abs_diff / ap_abs_sum
                 
         return asym
 
@@ -1455,10 +1460,10 @@ class SourceMorphology(object):
         ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(
             np.abs(image_smooth - image), method='exact')[0][0]
-        if np.isfinite(self._sky_smoothness):
-            S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+        if self._sky_smoothness == -99.0:  # invalid skybox
+            S = ap_abs_diff / ap_abs_flux
         else:
-            S = -99.0  # invalid
+            S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
 
         if not np.isfinite(S):
             warnings.warn('Invalid smoothness.', AstropyUserWarning)
