@@ -529,6 +529,8 @@ class SourceMorphology(object):
             'ellipticity',
             'elongation',
             'orientation',
+            'flux_circ',
+            'flux_ellip',
             'rpetro_circ',
             'rpetro_ellip',
             'rmax_circ',
@@ -556,6 +558,9 @@ class SourceMorphology(object):
             'sersic_yc',
             'sersic_ellip',
             'sersic_theta',
+            'sky_mean',
+            'sky_median',
+            'sky_sigma',
         ]
         for q in quantities:
             tmp = self[q]
@@ -803,6 +808,19 @@ class SourceMorphology(object):
         """
         return self._rpetro_circ_generic(self._asymmetry_center)
 
+    @lazyproperty
+    def flux_circ(self):
+        """
+        Return the sum of the pixel values over a circular Petrosian
+        aperture.
+        """
+        image = self._cutout_stamp_maskzeroed
+        r = self.rpetro_circ
+        ap = photutils.CircularAperture(self._asymmetry_center, r)
+        # Force flux sum to be positive:
+        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        return ap_sum
+
     def _petrosian_function_ellip(self, a, center, elongation, theta):
         """
         Helper function to calculate the Petrosian "radius".
@@ -903,6 +921,20 @@ class SourceMorphology(object):
             self._asymmetry_center, self.elongation,
             self.orientation)
 
+    @lazyproperty
+    def flux_ellip(self):
+        """
+        Return the sum of the pixel values over an elliptical Petrosian
+        aperture.
+        """
+        image = self._cutout_stamp_maskzeroed
+        a = self.rpetro_ellip
+        b = a / self.elongation
+        theta = self.orientation
+        ap = photutils.EllipticalAperture(self._asymmetry_center, a, b, theta)
+        # Force flux sum to be positive:
+        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        return ap_sum
 
     #######################
     # Gini-M20 statistics #
