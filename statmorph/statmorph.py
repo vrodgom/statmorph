@@ -2275,6 +2275,7 @@ def source_morphology(image, segmap, **kwargs):
     sources_morph = []
     for label in segmap.labels:
         sources_morph.append(SourceMorphology(image, segmap, label, **kwargs))
+        print('Finished processing source %d.\n' % (label))
 
     return sources_morph
 
