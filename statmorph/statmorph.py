@@ -300,9 +300,8 @@ class SourceMorphology(object):
         (2004), using the parameter ``n_sigma_outlier``.
     n_sigma_outlier : scalar, optional
         The number of standard deviations that define a pixel as an
-        outlier, relative to its 8 neighbors. This parameter only
-        takes effect when ``remove_outliers`` is ``True``. The default
-        value is 10.
+        outlier, relative to its 8 neighbors. If its value is zero or
+        negative, outliers are not removed. The default value is 10.
     annulus_width : float, optional
         The width (in pixels) of the annuli used to calculate the
         Petrosian radius and other quantities. The default value is 1.0.
@@ -367,6 +366,10 @@ class SourceMorphology(object):
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_ellip=2.0, boxcar_size_shape_asym=3.0,
                  sersic_maxiter=500, segmap_overlap_ratio=0.5):
+        self._image = image
+        self._segmap = segmap
+        self.label = label
+        self._mask = mask
         self._weightmap = weightmap
         self._gain = gain
         self._psf = psf
@@ -407,6 +410,8 @@ class SourceMorphology(object):
         if self._psf is not None:
             self._psf = self._psf / np.sum(self._psf)
 
+
+
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
         locs_invalid = ~np.isfinite(image)
@@ -422,15 +427,16 @@ class SourceMorphology(object):
 
         # Before doing anything else, set badpixels (outliers) to zero:
         self.num_badpixels = -1
-        if self._remove_outliers:
+        if self._n_sigma_outlier > 0:
+        # ~ if self._remove_outliers:
             badpixels = self._get_badpixels(image)
             image = np.where(~badpixels, image, 0.0)
             mask = mask | badpixels
             self.num_badpixels = np.sum(badpixels)
 
-        # Avoid duplication by storing some important data inside an
-        # associated photutils.SourceProperties object:
-        self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
+        # ~ # Avoid duplication by storing some important data inside an
+        # ~ # associated photutils.SourceProperties object:
+        # ~ self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
 
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements
@@ -440,19 +446,23 @@ class SourceMorphology(object):
         # (better performance in some pathological cases, e.g. GOODS-S 32143):
         self._use_centroid = False
 
-        # Position of the "postage stamp" cutout:
-        self._xmin_stamp = self._slice_stamp[1].start
-        self._ymin_stamp = self._slice_stamp[0].start
-        self._xmax_stamp = self._slice_stamp[1].stop - 1
-        self._ymax_stamp = self._slice_stamp[0].stop - 1
+        # ~ # Position of the "postage stamp" cutout:
+        # ~ self._xmin_stamp = self._slice_stamp[1].start
+        # ~ self._ymin_stamp = self._slice_stamp[0].start
+        # ~ self._xmax_stamp = self._slice_stamp[1].stop - 1
+        # ~ self._ymax_stamp = self._slice_stamp[0].stop - 1
 
-        # For record-keeping, store dimensions of the cutout
-        self.nx = self._xmax_stamp + 1 - self._xmin_stamp
-        self.ny = self._ymax_stamp + 1 - self._ymin_stamp
+        # ~ # For record-keeping, store dimensions of the cutout
+        # ~ self.nx = self._xmax_stamp + 1 - self._xmin_stamp
+        # ~ self.ny = self._ymax_stamp + 1 - self._ymin_stamp
+
+        # ~ # Centroid of the source relative to the "postage stamp" cutout:
+        # ~ self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
+        # ~ self._yc_stamp = self._props.ycentroid.value - self._ymin_stamp
 
         # Centroid of the source relative to the "postage stamp" cutout:
-        self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
-        self._yc_stamp = self._props.ycentroid.value - self._ymin_stamp
+        self._xc_stamp = self.xc_centroid - self._xmin_stamp
+        self._yc_stamp = self.yc_centroid - self._ymin_stamp
 
         # Print warning if centroid is masked:
         ic, jc = int(self._yc_stamp), int(self._xc_stamp)
@@ -460,9 +470,15 @@ class SourceMorphology(object):
             warnings.warn('Centroid is masked.', AstropyUserWarning)
             self.flag = 1
 
-        # Position of the brightest pixel relative to the cutout:
-        self._x_maxval_stamp = self._props.maxval_xpos.value - self._xmin_stamp
-        self._y_maxval_stamp = self._props.maxval_ypos.value - self._ymin_stamp
+        # ~ # Position of the brightest pixel relative to the cutout:
+        # ~ self._x_maxval_stamp = self._props.maxval_xpos.value - self._xmin_stamp
+        # ~ self._y_maxval_stamp = self._props.maxval_ypos.value - self._ymin_stamp
+
+        # Position of the source's brightest pixel relative to the stamp cutout:
+        maxval = np.max(self._cutout_segment_maskzeroed)
+        maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed == maxval)[0]
+        self._x_maxval_stamp = maxval_stamp_pos[1]
+        self._y_maxval_stamp = maxval_stamp_pos[0]
 
         # ------------------------------------------------------------------
         # NOTE: no morphology calculations have been done so far, but
@@ -567,7 +583,7 @@ class SourceMorphology(object):
 
     def _check_segmaps(self):
         """
-        Compare Gini segmap and MID segmap; set flat=1 if they are
+        Compare Gini segmap and MID segmap; set flag=1 if they are
         very different from each other.
         """
         area_max = max(np.sum(self._segmap_gini),
@@ -586,18 +602,108 @@ class SourceMorphology(object):
             self.flag = 1
 
     @lazyproperty
+    def _slice_segment(self):
+        """
+        A 'minimal' slice containing the source segment of interest.
+        """
+        return self._segmap.slices[self.label - 1]
+
+    @lazyproperty
+    def _xmin_segment(self):
+        """
+        The minimum ``x`` position of the input source segment.
+        """
+        return self._slice_segment[1].start
+
+    @lazyproperty
+    def _ymin_segment(self):
+        """
+        The minimum ``y`` position of the input source segment.
+        """
+        return self._slice_segment[0].start
+
+    @lazyproperty
+    def _xmax_segment(self):
+        """
+        The maximum ``x`` position of the input source segment.
+        """
+        return self._slice_segment[1].stop - 1
+
+    @lazyproperty
+    def _ymax_segment(self):
+        """
+        The maximum ``y`` position of the input source segment.
+        """
+        return self._slice_segment[0].stop - 1
+
+    @lazyproperty
+    def _mask_segment(self):
+        """
+        Create a total binary mask for the 'minimal' segment cutout.
+        Pixels belonging to other sources (as well as pixels masked
+        using the ``mask`` keyword argument) are set to ``True``,
+        but the background (segmap == 0) is left alone.
+        """
+        segmap_segment = self._segmap.data[self._slice_segment]
+        mask_segment = (segmap_segment != 0) & (segmap_segment != self.label)
+        if self._mask is not None:
+            mask_segment = mask_segment | self._mask[self._slice_segment]
+        return mask_segment
+
+    @lazyproperty
+    def _cutout_segment_maskzeroed(self):
+        """
+        Return a data cutout with its shape and position determined
+        by ``_slice_segment``. Pixels belonging to other sources
+        (as well as pixels where ``mask`` == 1) are set to zero,
+        but the background is left alone.
+        """
+        cutout_segment = np.where(~self._mask_segment,
+                                  self._image[self._slice_segment], 0.0)
+        return cutout_segment
+
+    @lazyproperty
+    def _centroid_segment(self):
+        """
+        The (yc, xc) centroid of the input segment, relative to
+        ``_slice_segment``.
+        """
+        image = np.float64(self._cutout_segment_maskzeroed)  # skimage wants double
+
+        # Calculate centroid
+        m = skimage.measure.moments(image, order=1)
+        yc = m[0, 1] / m[0, 0]
+        xc = m[1, 0] / m[0, 0]
+
+        return np.array([yc, xc])
+
+    # ~ @lazyproperty
+    # ~ def xc_centroid(self):
+        # ~ """
+        # ~ The x-coordinate of the centroid, relative to the original image.
+        # ~ """
+        # ~ return self._props.xcentroid.value
+
+    # ~ @lazyproperty
+    # ~ def yc_centroid(self):
+        # ~ """
+        # ~ The y-coordinate of the centroid, relative to the original image.
+        # ~ """
+        # ~ return self._props.ycentroid.value
+
+    @lazyproperty
     def xc_centroid(self):
         """
         The x-coordinate of the centroid, relative to the original image.
         """
-        return self._props.xcentroid.value
+        return self._centroid_segment[1] + self._xmin_segment
 
     @lazyproperty
     def yc_centroid(self):
         """
         The y-coordinate of the centroid, relative to the original image.
         """
-        return self._props.ycentroid.value
+        return self._centroid_segment[0] + self._ymin_segment
 
     @lazyproperty
     def _slice_stamp(self):
@@ -608,8 +714,9 @@ class SourceMorphology(object):
         square when the source is close to a border of the original image.
         """
         # Maximum distance to any side of the bounding box
-        yc, xc = np.int64(self._props.centroid.value)
-        ymin, xmin, ymax, xmax = np.int64(self._props.bbox.value)
+        yc, xc = np.int64(self.yc_centroid), np.int64(self.xc_centroid)
+        xmin, ymin = self._xmin_segment, self._ymin_segment
+        xmax, ymax = self._xmax_segment, self._ymax_segment
         dist = max(xmax-xc, xc-xmin, ymax-yc, yc-ymin)
 
         # Add some extra space in each dimension
@@ -621,11 +728,53 @@ class SourceMorphology(object):
         dist = max(dist, self._min_cutout_size // 2)
 
         # Make cutout
-        ny, nx = self._props._data.shape
+        ny, nx = self._image.shape
         slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist)),
                        slice(max(0, xc-dist), min(nx, xc+dist)))
 
         return slice_stamp
+
+    @lazyproperty
+    def _xmin_stamp(self):
+        """
+        The minimum ``x`` position of the 'postage stamp'.
+        """
+        return self._slice_stamp[1].start
+
+    @lazyproperty
+    def _ymin_stamp(self):
+        """
+        The minimum ``y`` position of the 'postage stamp'.
+        """
+        return self._slice_stamp[0].start
+
+    @lazyproperty
+    def _xmax_stamp(self):
+        """
+        The maximum ``x`` position of the 'postage stamp'.
+        """
+        return self._slice_stamp[1].stop - 1
+
+    @lazyproperty
+    def _ymax_stamp(self):
+        """
+        The maximum ``y`` position of the 'postage stamp'.
+        """
+        return self._slice_stamp[0].stop - 1
+
+    @lazyproperty
+    def nx(self):
+        """
+        Number of pixels in the 'postage stamp' along the ``x`` direction.
+        """
+        return self._xmax_stamp + 1 - self._xmin_stamp
+
+    @lazyproperty
+    def ny(self):
+        """
+        Number of pixels in the 'postage stamp' along the ``y`` direction.
+        """
+        return self._ymax_stamp + 1 - self._ymin_stamp
 
     @lazyproperty
     def _mask_stamp(self):
@@ -635,10 +784,10 @@ class SourceMorphology(object):
         using the ``mask`` keyword argument) are set to ``True``,
         but the background (segmap == 0) is left alone.
         """
-        segmap_stamp = self._props._segment_img.data[self._slice_stamp]
-        mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self._props.label)
-        if self._props._mask is not None:
-            mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
+        segmap_stamp = self._segmap.data[self._slice_stamp]
+        mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self.label)
+        if self._mask is not None:
+            mask_stamp = mask_stamp | self._mask[self._slice_stamp]
         return mask_stamp
 
     @lazyproperty
@@ -646,10 +795,10 @@ class SourceMorphology(object):
         """
         Similar to ``_mask_stamp``, but also mask the background.
         """
-        segmap_stamp = self._props._segment_img.data[self._slice_stamp]
-        mask_stamp = segmap_stamp != self._props.label
-        if self._props._mask is not None:
-            mask_stamp = mask_stamp | self._props._mask[self._slice_stamp]
+        segmap_stamp = self._segmap.data[self._slice_stamp]
+        mask_stamp = segmap_stamp != self.label
+        if self._mask is not None:
+            mask_stamp = mask_stamp | self._mask[self._slice_stamp]
         return mask_stamp
 
     @lazyproperty
@@ -661,7 +810,7 @@ class SourceMorphology(object):
         but the background is left alone.
         """
         cutout_stamp = np.where(~self._mask_stamp,
-                                self._props._data[self._slice_stamp], 0.0)
+                                self._image[self._slice_stamp], 0.0)
         return cutout_stamp
 
     @lazyproperty
@@ -1110,11 +1259,11 @@ class SourceMorphology(object):
         In principle, a more accurate approach is possible
         (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
-        segmap = self._props._segment_img.data[self._slice_stamp]
+        segmap = self._segmap.data[self._slice_stamp]
         ny, nx = segmap.shape
         mask = np.zeros(segmap.shape, dtype=np.bool8)
-        if self._props._mask is not None:
-            mask = self._props._mask[self._slice_stamp]
+        if self._mask is not None:
+            mask = self._mask[self._slice_stamp]
         
         cur_skybox_size = self._skybox_size
         while True:
@@ -1362,7 +1511,7 @@ class SourceMorphology(object):
         # This checks the covariance matrix and modifies it in the
         # case of "infinitely thin" sources by iteratively increasing
         # the diagonal elements:
-        covariance = self._props._check_covariance(covariance)
+        covariance = photutils.SourceProperties._check_covariance(covariance)
         
         return covariance
 
