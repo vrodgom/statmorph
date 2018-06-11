@@ -410,8 +410,6 @@ class SourceMorphology(object):
         if self._psf is not None:
             self._psf = self._psf / np.sum(self._psf)
 
-
-
         # If there are nan or inf values, set them to zero and
         # add them to the mask.
         locs_invalid = ~np.isfinite(image)
@@ -434,10 +432,6 @@ class SourceMorphology(object):
             mask = mask | badpixels
             self.num_badpixels = np.sum(badpixels)
 
-        # ~ # Avoid duplication by storing some important data inside an
-        # ~ # associated photutils.SourceProperties object:
-        # ~ self._props = photutils.SourceProperties(image, segmap, label, mask=mask)
-
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements
         self.flag_sersic = 0  # attempts to flag bad Sersic fits
@@ -446,23 +440,9 @@ class SourceMorphology(object):
         # (better performance in some pathological cases, e.g. GOODS-S 32143):
         self._use_centroid = False
 
-        # ~ # Position of the "postage stamp" cutout:
-        # ~ self._xmin_stamp = self._slice_stamp[1].start
-        # ~ self._ymin_stamp = self._slice_stamp[0].start
-        # ~ self._xmax_stamp = self._slice_stamp[1].stop - 1
-        # ~ self._ymax_stamp = self._slice_stamp[0].stop - 1
-
-        # ~ # For record-keeping, store dimensions of the cutout
-        # ~ self.nx = self._xmax_stamp + 1 - self._xmin_stamp
-        # ~ self.ny = self._ymax_stamp + 1 - self._ymin_stamp
-
-        # ~ # Centroid of the source relative to the "postage stamp" cutout:
-        # ~ self._xc_stamp = self._props.xcentroid.value - self._xmin_stamp
-        # ~ self._yc_stamp = self._props.ycentroid.value - self._ymin_stamp
-
         # Centroid of the source relative to the "postage stamp" cutout:
-        self._xc_stamp = self.xc_centroid - self._xmin_stamp
-        self._yc_stamp = self.yc_centroid - self._ymin_stamp
+        self._xc_stamp = self.xc_centroid - self.xmin_stamp
+        self._yc_stamp = self.yc_centroid - self.ymin_stamp
 
         # Print warning if centroid is masked:
         ic, jc = int(self._yc_stamp), int(self._xc_stamp)
@@ -470,12 +450,8 @@ class SourceMorphology(object):
             warnings.warn('Centroid is masked.', AstropyUserWarning)
             self.flag = 1
 
-        # ~ # Position of the brightest pixel relative to the cutout:
-        # ~ self._x_maxval_stamp = self._props.maxval_xpos.value - self._xmin_stamp
-        # ~ self._y_maxval_stamp = self._props.maxval_ypos.value - self._ymin_stamp
-
         # Position of the source's brightest pixel relative to the stamp cutout:
-        maxval = np.max(self._cutout_segment_maskzeroed)
+        maxval = np.max(self._cutout_segment_maskzeroed_no_bg)
         maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed == maxval)[0]
         self._x_maxval_stamp = maxval_stamp_pos[1]
         self._y_maxval_stamp = maxval_stamp_pos[0]
@@ -540,11 +516,14 @@ class SourceMorphology(object):
         quantities = [
             'xc_centroid',
             'yc_centroid',
+            'ellipticity_centroid',
+            'elongation_centroid',
+            'orientation_centroid',
             'xc_asymmetry',
             'yc_asymmetry',
-            'ellipticity',
-            'elongation',
-            'orientation',
+            'ellipticity_asymmetry',
+            'elongation_asymmetry',
+            'orientation_asymmetry',
             'flux_circ',
             'flux_ellip',
             'rpetro_circ',
@@ -577,6 +556,12 @@ class SourceMorphology(object):
             'sky_mean',
             'sky_median',
             'sky_sigma',
+            'xmin_stamp',
+            'ymin_stamp',
+            'xmax_stamp',
+            'ymax_stamp',
+            'nx_stamp',
+            'ny_stamp',
         ]
         for q in quantities:
             tmp = self[q]
@@ -637,28 +622,28 @@ class SourceMorphology(object):
         return self._slice_segment[0].stop - 1
 
     @lazyproperty
-    def _mask_segment(self):
+    def _mask_segment_no_bg(self):
         """
         Create a total binary mask for the 'minimal' segment cutout.
-        Pixels belonging to other sources (as well as pixels masked
-        using the ``mask`` keyword argument) are set to ``True``,
-        but the background (segmap == 0) is left alone.
+        Pixels belonging to other sources, the background (segmap == 0),
+        and pixels flagged using the ``mask`` keyword argument are set
+        to ``True``.
         """
         segmap_segment = self._segmap.data[self._slice_segment]
-        mask_segment = (segmap_segment != 0) & (segmap_segment != self.label)
+        mask_segment = segmap_segment != self.label
         if self._mask is not None:
             mask_segment = mask_segment | self._mask[self._slice_segment]
         return mask_segment
 
     @lazyproperty
-    def _cutout_segment_maskzeroed(self):
+    def _cutout_segment_maskzeroed_no_bg(self):
         """
         Return a data cutout with its shape and position determined
-        by ``_slice_segment``. Pixels belonging to other sources
-        (as well as pixels where ``mask`` == 1) are set to zero,
-        but the background is left alone.
+        by ``_slice_segment``. Pixels belonging to other sources and
+        the background (as well as pixels where ``mask`` == 1) are
+        set to zero.
         """
-        cutout_segment = np.where(~self._mask_segment,
+        cutout_segment = np.where(~self._mask_segment_no_bg,
                                   self._image[self._slice_segment], 0.0)
         return cutout_segment
 
@@ -668,7 +653,7 @@ class SourceMorphology(object):
         The (yc, xc) centroid of the input segment, relative to
         ``_slice_segment``.
         """
-        image = np.float64(self._cutout_segment_maskzeroed)  # skimage wants double
+        image = np.float64(self._cutout_segment_maskzeroed_no_bg)  # skimage wants double
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
@@ -676,20 +661,6 @@ class SourceMorphology(object):
         xc = m[1, 0] / m[0, 0]
 
         return np.array([yc, xc])
-
-    # ~ @lazyproperty
-    # ~ def xc_centroid(self):
-        # ~ """
-        # ~ The x-coordinate of the centroid, relative to the original image.
-        # ~ """
-        # ~ return self._props.xcentroid.value
-
-    # ~ @lazyproperty
-    # ~ def yc_centroid(self):
-        # ~ """
-        # ~ The y-coordinate of the centroid, relative to the original image.
-        # ~ """
-        # ~ return self._props.ycentroid.value
 
     @lazyproperty
     def xc_centroid(self):
@@ -704,6 +675,117 @@ class SourceMorphology(object):
         The y-coordinate of the centroid, relative to the original image.
         """
         return self._centroid_segment[0] + self._ymin_segment
+
+    def _covariance_generic(self, xc, yc):
+        """
+        The covariance matrix of a Gaussian function that has the same
+        second-order moments as the source, with respect to ``(xc, yc)``.
+        """
+        # skimage wants double precision:
+        image = np.float64(self._cutout_segment_maskzeroed_no_bg)
+        # Ignore negative values (otherwise eigvals can be negative):
+        image = np.where(image > 0, image, 0.0)
+
+        # Calculate moments w.r.t. center
+        xc, yc = xc - self._xmin_segment, yc - self._ymin_segment
+        mc = skimage.measure.moments_central(image, yc, xc, order=3)
+        assert mc[0, 0] > 0
+
+        covariance = np.array([
+            [mc[2, 0], mc[1, 1]],
+            [mc[1, 1], mc[0, 2]]])
+        covariance /= mc[0, 0]  # normalize
+        
+        # This checks the covariance matrix and modifies it in the
+        # case of "infinitely thin" sources by iteratively increasing
+        # the diagonal elements:
+        covariance = photutils.SourceProperties._check_covariance(covariance)
+        
+        return covariance
+
+    def _eigvals_generic(self, covariance):
+        """
+        The ordered (largest first) eigenvalues of the covariance
+        matrix, which correspond to the *squared* semimajor and
+        semiminor axes.
+        """
+        eigvals = np.linalg.eigvals(covariance)
+        eigvals = np.sort(eigvals)[::-1]  # largest first
+        assert np.all(eigvals > 0)
+        
+        return eigvals
+
+    def _ellipticity_generic(self, eigvals):
+        """
+        The ellipticity of (the Gaussian function that has the same
+        second-order moments as) the source.
+        """
+        a = np.sqrt(eigvals[0])
+        b = np.sqrt(eigvals[1])
+
+        return 1.0 - (b / a)
+
+    def _elongation_generic(self, eigvals):
+        """
+        The elongation of (the Gaussian function that has the same
+        second-order moments as) the source.
+        """
+        a = np.sqrt(eigvals[0])
+        b = np.sqrt(eigvals[1])
+
+        return a / b
+
+    def _orientation_generic(self, covariance):
+        """
+        The orientation (in radians) of the source.
+        """
+        A, B, B, C = covariance.flat
+        
+        # This comes from the equation of a rotated ellipse:
+        theta = 0.5 * np.arctan2(2.0 * B, A - C)
+        
+        return theta
+
+    @lazyproperty
+    def _covariance_centroid(self):
+        """
+        The covariance matrix of a Gaussian function that has the same
+        second-order moments as the source, with respect to the centroid.
+        """
+        return self._covariance_generic(self.xc_centroid, self.yc_centroid)
+
+    @lazyproperty
+    def _eigvals_centroid(self):
+        """
+        The ordered (largest first) eigenvalues of the covariance
+        matrix, which correspond to the *squared* semimajor and
+        semiminor axes, relative to the centroid.
+        """
+        return self._eigvals_generic(self._covariance_centroid)
+
+    @lazyproperty
+    def ellipticity_centroid(self):
+        """
+        The ellipticity of (the Gaussian function that has the same
+        second-order moments as) the source, relative to the centroid.
+        """
+        return self._ellipticity_generic(self._eigvals_centroid)
+
+    @lazyproperty
+    def elongation_centroid(self):
+        """
+        The elongation of (the Gaussian function that has the same
+        second-order moments as) the source, relative to the centroid.
+        """
+        return self._elongation_generic(self._eigvals_centroid)
+
+    @lazyproperty
+    def orientation_centroid(self):
+        """
+        The orientation (in radians) of the source, relative to the
+        centroid.
+        """
+        return self._orientation_generic(self._covariance_centroid)
 
     @lazyproperty
     def _slice_stamp(self):
@@ -735,46 +817,46 @@ class SourceMorphology(object):
         return slice_stamp
 
     @lazyproperty
-    def _xmin_stamp(self):
+    def xmin_stamp(self):
         """
         The minimum ``x`` position of the 'postage stamp'.
         """
         return self._slice_stamp[1].start
 
     @lazyproperty
-    def _ymin_stamp(self):
+    def ymin_stamp(self):
         """
         The minimum ``y`` position of the 'postage stamp'.
         """
         return self._slice_stamp[0].start
 
     @lazyproperty
-    def _xmax_stamp(self):
+    def xmax_stamp(self):
         """
         The maximum ``x`` position of the 'postage stamp'.
         """
         return self._slice_stamp[1].stop - 1
 
     @lazyproperty
-    def _ymax_stamp(self):
+    def ymax_stamp(self):
         """
         The maximum ``y`` position of the 'postage stamp'.
         """
         return self._slice_stamp[0].stop - 1
 
     @lazyproperty
-    def nx(self):
+    def nx_stamp(self):
         """
         Number of pixels in the 'postage stamp' along the ``x`` direction.
         """
-        return self._xmax_stamp + 1 - self._xmin_stamp
+        return self.xmax_stamp + 1 - self.xmin_stamp
 
     @lazyproperty
-    def ny(self):
+    def ny_stamp(self):
         """
         Number of pixels in the 'postage stamp' along the ``y`` direction.
         """
-        return self._ymax_stamp + 1 - self._ymin_stamp
+        return self.ymax_stamp + 1 - self.ymin_stamp
 
     @lazyproperty
     def _mask_stamp(self):
@@ -1067,8 +1149,8 @@ class SourceMorphology(object):
         respect to the point that minimizes the asymmetry.
         """
         return self._rpetro_ellip_generic(
-            self._asymmetry_center, self.elongation,
-            self.orientation)
+            self._asymmetry_center, self.elongation_asymmetry,
+            self.orientation_asymmetry)
 
     @lazyproperty
     def flux_ellip(self):
@@ -1078,8 +1160,8 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         a = self.rpetro_ellip
-        b = a / self.elongation
-        theta = self.orientation
+        b = a / self.elongation_asymmetry
+        theta = self.orientation_asymmetry
         ap = photutils.EllipticalAperture(self._asymmetry_center, a, b, theta)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
@@ -1102,8 +1184,8 @@ class SourceMorphology(object):
         # Use mean flux at the Petrosian "radius" as threshold
         a_in = self.rpetro_ellip - 0.5 * self._annulus_width
         a_out = self.rpetro_ellip + 0.5 * self._annulus_width
-        b_out = a_out / self.elongation
-        theta = self.orientation
+        b_out = a_out / self.elongation_asymmetry
+        theta = self.orientation_asymmetry
         ellip_annulus = photutils.EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
@@ -1476,7 +1558,7 @@ class SourceMorphology(object):
         The x-coordinate of the point that minimizes the asymmetry,
         relative to the original image.
         """
-        return self._xmin_stamp + self._asymmetry_center[0]
+        return self.xmin_stamp + self._asymmetry_center[0]
 
     @lazyproperty
     def yc_asymmetry(self):
@@ -1484,86 +1566,51 @@ class SourceMorphology(object):
         The y-coordinate of the point that minimizes the asymmetry,
         relative to the original image.
         """
-        return self._ymin_stamp + self._asymmetry_center[1]
+        return self.ymin_stamp + self._asymmetry_center[1]
 
     @lazyproperty
-    def _asymmetry_covariance(self):
+    def _covariance_asymmetry(self):
         """
         The covariance matrix of a Gaussian function that has the same
-        second-order moments as the source, using ``_asymmetry_center``
-        as the center.
+        second-order moments as the source, with respect to the point
+        that minimizes the asymmetry.
         """
-        # skimage wants double precision:
-        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
-        # Ignore negative values (otherwise eigvals can be negative):
-        image = np.where(image > 0, image, 0.0)
-
-        # Calculate moments w.r.t. asymmetry center
-        xc, yc = self._asymmetry_center
-        mc = skimage.measure.moments_central(image, yc, xc, order=3)
-        assert mc[0, 0] > 0
-
-        covariance = np.array([
-            [mc[2, 0], mc[1, 1]],
-            [mc[1, 1], mc[0, 2]]])
-        covariance /= mc[0, 0]  # normalize
-        
-        # This checks the covariance matrix and modifies it in the
-        # case of "infinitely thin" sources by iteratively increasing
-        # the diagonal elements:
-        covariance = photutils.SourceProperties._check_covariance(covariance)
-        
-        return covariance
+        return self._covariance_generic(self.xc_asymmetry, self.yc_asymmetry)
 
     @lazyproperty
-    def _asymmetry_eigvals(self):
+    def _eigvals_asymmetry(self):
         """
         The ordered (largest first) eigenvalues of the covariance
         matrix, which correspond to the *squared* semimajor and
-        semiminor axes.
+        semiminor axes, relative to the point that minimizes the asymmetry.
         """
-        eigvals = np.linalg.eigvals(self._asymmetry_covariance)
-        eigvals = np.sort(eigvals)[::-1]  # largest first
-        assert np.all(eigvals > 0)
-        
-        return eigvals
+        return self._eigvals_generic(self._covariance_asymmetry)
 
     @lazyproperty
-    def ellipticity(self):
+    def ellipticity_asymmetry(self):
         """
         The ellipticity of (the Gaussian function that has the same
-        second-order moments as) the source, relative to the point
-        that minimizes the asymmetry.
+        second-order moments as) the source, relative to the point that
+        minimizes the asymmetry.
         """
-        a = np.sqrt(self._asymmetry_eigvals[0])
-        b = np.sqrt(self._asymmetry_eigvals[1])
-
-        return 1.0 - (b / a)
+        return self._ellipticity_generic(self._eigvals_asymmetry)
 
     @lazyproperty
-    def elongation(self):
+    def elongation_asymmetry(self):
         """
         The elongation of (the Gaussian function that has the same
-        second-order moments as) the source, relative to the point
-        that minimizes the asymmetry.
+        second-order moments as) the source, relative to the point that
+        minimizes the asymmetry.
         """
-        a = np.sqrt(self._asymmetry_eigvals[0])
-        b = np.sqrt(self._asymmetry_eigvals[1])
-
-        return a / b
+        return self._elongation_generic(self._eigvals_asymmetry)
 
     @lazyproperty
-    def orientation(self):
+    def orientation_asymmetry(self):
         """
-        The orientation (in radians) of the source, relative to
-        the point that minimizes the asymmetry.
+        The orientation (in radians) of the source, relative to the
+        point that minimizes the asymmetry.
         """
-        A, B, B, C = self._asymmetry_covariance.flat
-        
-        # This comes from the equation of a rotated ellipse:
-        theta = 0.5 * np.arctan2(2.0 * B, A - C)
-        
-        return theta
+        return self._orientation_generic(self._covariance_asymmetry)
 
     @lazyproperty
     def asymmetry(self):
@@ -2035,8 +2082,8 @@ class SourceMorphology(object):
             r = 0.0
         else:
             r, flag = _radius_at_fraction_of_total_ellip(
-                image, center, self.elongation,
-                self.orientation, self.rmax_ellip, 0.5)
+                image, center, self.elongation_asymmetry,
+                self.orientation_asymmetry, self.rmax_ellip, 0.5)
             self.flag = max(self.flag, flag)
         
         # In theory, this return value can also be NaN
@@ -2161,12 +2208,12 @@ class SourceMorphology(object):
         # Center at pixel that minimizes asymmetry
         xc, yc = self._asymmetry_center
 
-        theta = self.orientation
+        theta = self.orientation_asymmetry
         y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
 
         xprime = (x-xc)*np.cos(theta) + (y-yc)*np.sin(theta)
         yprime = -(x-xc)*np.sin(theta) + (y-yc)*np.cos(theta)
-        r_ellip = np.sqrt(xprime**2 + (yprime*self.elongation)**2)
+        r_ellip = np.sqrt(xprime**2 + (yprime*self.elongation_asymmetry)**2)
 
         # Only consider pixels within the segmap.
         rmax_ellip = np.max(r_ellip[self._segmap_shape_asym])
@@ -2245,7 +2292,7 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
         center = self._asymmetry_center
-        theta = self.orientation
+        theta = self.orientation_asymmetry
 
         # Get flux at the "effective radius"
         a_in = self.rhalf_ellip - 0.5 * self._annulus_width
@@ -2255,7 +2302,7 @@ class SourceMorphology(object):
                           AstropyUserWarning)
             self.flag_sersic = 1
             a_in = self.rhalf_ellip
-        b_out = a_out / self.elongation
+        b_out = a_out / self.elongation_asymmetry
         ellip_annulus = photutils.EllipticalAnnulus(
             center, a_in, a_out, b_out, theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
@@ -2286,11 +2333,11 @@ class SourceMorphology(object):
         if self._psf is None:
             sersic_init = models.Sersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry, theta=theta)
         else:
             sersic_init = ConvolvedSersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry, theta=theta)
             sersic_init.set_psf(self._psf)
 
         # The number of data points cannot be smaller than the number of
@@ -2350,7 +2397,7 @@ class SourceMorphology(object):
         (`astropy.modeling.models.Sersic2D`), relative to the
         original image.
         """
-        return self._xmin_stamp + self._sersic_model.x_0.value
+        return self.xmin_stamp + self._sersic_model.x_0.value
 
     @lazyproperty
     def sersic_yc(self):
@@ -2359,7 +2406,7 @@ class SourceMorphology(object):
         (`astropy.modeling.models.Sersic2D`), relative to the
         original image.
         """
-        return self._ymin_stamp + self._sersic_model.y_0.value
+        return self.ymin_stamp + self._sersic_model.y_0.value
 
     @lazyproperty
     def sersic_ellip(self):
