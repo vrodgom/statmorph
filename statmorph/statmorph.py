@@ -295,13 +295,11 @@ class SourceMorphology(object):
         The minimum size of the cutout, in case ``cutout_extent`` times
         the size of the minimal bounding box is smaller than this.
         Any given value will be truncated to an even number.
-    remove_outliers : bool, optional
-        If ``True``, remove outlying pixels as described in Lotz et al.
-        (2004), using the parameter ``n_sigma_outlier``.
     n_sigma_outlier : scalar, optional
         The number of standard deviations that define a pixel as an
-        outlier, relative to its 8 neighbors. If its value is zero or
-        negative, outliers are not removed. The default value is 10.
+        outlier, relative to its 8 neighbors. Outlying pixels are
+        removed as described in Lotz et al. (2004) If the value is zero
+        or negative, outliers are not removed. The default value is 10.
     annulus_width : float, optional
         The width (in pixels) of the annuli used to calculate the
         Petrosian radius and other quantities. The default value is 1.0.
@@ -360,7 +358,7 @@ class SourceMorphology(object):
     """
     def __init__(self, image, segmap, label, mask=None, weightmap=None,
                  gain=None, psf=None, cutout_extent=1.5, min_cutout_size=48,
-                 remove_outliers=True, n_sigma_outlier=10, annulus_width=1.0,
+                 n_sigma_outlier=10, annulus_width=1.0,
                  eta=0.2, petro_fraction_gini=0.2, skybox_size=32,
                  petro_extent_circ=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
@@ -375,7 +373,6 @@ class SourceMorphology(object):
         self._psf = psf
         self._cutout_extent = cutout_extent
         self._min_cutout_size = min_cutout_size - min_cutout_size % 2
-        self._remove_outliers = remove_outliers
         self._n_sigma_outlier = n_sigma_outlier
         self._annulus_width = annulus_width
         self._eta = eta
@@ -853,9 +850,9 @@ class SourceMorphology(object):
             if self._gain is None:
                 raise Exception('Must provide either weightmap or gain.')
             else:
-                assert gain > 0
+                assert self._gain > 0
                 weightmap_stamp = np.sqrt(
-                    np.abs(self._image[self._slice_stamp])/gain + self.sky_sigma**2)
+                    np.abs(self._image[self._slice_stamp])/self._gain + self.sky_sigma**2)
         else:
             weightmap_stamp = self._weightmap[self._slice_stamp]
 
