@@ -398,39 +398,19 @@ class SourceMorphology(object):
             segmap = photutils.SegmentationImage(segmap)
 
         # Check sanity of input data
-        assert segmap.shape == image.shape
-        if mask is None:
-            mask = np.zeros(image.shape, dtype=np.bool8)
-        mask = np.bool8(mask)
-        assert mask.shape == image.shape
+        self._segmap.check_label(self.label)
+        assert self._segmap.data.shape == self._image.shape
+        if self._mask is not None:
+            assert self._mask.shape == self._image.shape
         if self._weightmap is not None:
-            assert self._weightmap.shape == image.shape
+            assert self._weightmap.shape == self._image.shape
 
         # Normalize PSF
         if self._psf is not None:
             self._psf = self._psf / np.sum(self._psf)
 
-        # If there are nan or inf values, set them to zero and
-        # add them to the mask.
-        locs_invalid = ~np.isfinite(image)
-        if self._weightmap is not None:
-            locs_invalid = locs_invalid | ~np.isfinite(self._weightmap)
-            self._weightmap[locs_invalid] = 0.0
-        image[locs_invalid] = 0.0
-        mask = mask | locs_invalid
-
         # Check that the labeled galaxy segment has a positive flux sum:
-        valid_locs = (segmap.data == label) & (~mask)
-        assert np.sum(image[valid_locs]) > 0
-
-        # Before doing anything else, set badpixels (outliers) to zero:
-        self.num_badpixels = -1
-        if self._n_sigma_outlier > 0:
-        # ~ if self._remove_outliers:
-            badpixels = self._get_badpixels(image)
-            image = np.where(~badpixels, image, 0.0)
-            mask = mask | badpixels
-            self.num_badpixels = np.sum(badpixels)
+        assert np.sum(self._cutout_stamp_maskzeroed_no_bg) > 0
 
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements
@@ -451,7 +431,7 @@ class SourceMorphology(object):
             self.flag = 1
 
         # Position of the source's brightest pixel relative to the stamp cutout:
-        maxval = np.max(self._cutout_segment_maskzeroed_no_bg)
+        maxval = np.max(self._cutout_stamp_maskzeroed_no_bg)
         maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed == maxval)[0]
         self._x_maxval_stamp = maxval_stamp_pos[1]
         self._y_maxval_stamp = maxval_stamp_pos[0]
@@ -460,14 +440,6 @@ class SourceMorphology(object):
         # NOTE: no morphology calculations have been done so far, but
         # this will change below this line. Modify this __init__ with care.
         # ------------------------------------------------------------------
-
-        # Create weight map, if necessary
-        if self._weightmap is None:
-            if self._gain is None:
-                raise Exception('Must provide either weightmap or gain.')
-            else:
-                assert gain > 0
-                self._weightmap = np.sqrt(np.abs(image)/gain + self.sky_sigma**2)
 
         # For simplicity, evaluate all "lazy" properties at once:
         self._calculate_morphology()
@@ -587,94 +559,33 @@ class SourceMorphology(object):
             self.flag = 1
 
     @lazyproperty
-    def _slice_segment(self):
-        """
-        A 'minimal' slice containing the source segment of interest.
-        """
-        return self._segmap.slices[self.label - 1]
-
-    @lazyproperty
-    def _xmin_segment(self):
-        """
-        The minimum ``x`` position of the input source segment.
-        """
-        return self._slice_segment[1].start
-
-    @lazyproperty
-    def _ymin_segment(self):
-        """
-        The minimum ``y`` position of the input source segment.
-        """
-        return self._slice_segment[0].start
-
-    @lazyproperty
-    def _xmax_segment(self):
-        """
-        The maximum ``x`` position of the input source segment.
-        """
-        return self._slice_segment[1].stop - 1
-
-    @lazyproperty
-    def _ymax_segment(self):
-        """
-        The maximum ``y`` position of the input source segment.
-        """
-        return self._slice_segment[0].stop - 1
-
-    @lazyproperty
-    def _mask_segment_no_bg(self):
-        """
-        Create a total binary mask for the 'minimal' segment cutout.
-        Pixels belonging to other sources, the background (segmap == 0),
-        and pixels flagged using the ``mask`` keyword argument are set
-        to ``True``.
-        """
-        segmap_segment = self._segmap.data[self._slice_segment]
-        mask_segment = segmap_segment != self.label
-        if self._mask is not None:
-            mask_segment = mask_segment | self._mask[self._slice_segment]
-        return mask_segment
-
-    @lazyproperty
-    def _cutout_segment_maskzeroed_no_bg(self):
-        """
-        Return a data cutout with its shape and position determined
-        by ``_slice_segment``. Pixels belonging to other sources and
-        the background (as well as pixels where ``mask`` == 1) are
-        set to zero.
-        """
-        cutout_segment = np.where(~self._mask_segment_no_bg,
-                                  self._image[self._slice_segment], 0.0)
-        return cutout_segment
-
-    @lazyproperty
-    def _centroid_segment(self):
+    def _centroid(self):
         """
         The (yc, xc) centroid of the input segment, relative to
-        ``_slice_segment``.
+        ``_slice_stamp``.
         """
-        image = np.float64(self._cutout_segment_maskzeroed_no_bg)  # skimage wants double
+        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)  # skimage wants double
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
 
-        return np.array([yc, xc])
+        return np.array([xc, yc])
 
     @lazyproperty
     def xc_centroid(self):
         """
         The x-coordinate of the centroid, relative to the original image.
         """
-        return self._centroid_segment[1] + self._xmin_segment
+        return self._centroid[0] + self.xmin_stamp
 
     @lazyproperty
     def yc_centroid(self):
         """
         The y-coordinate of the centroid, relative to the original image.
         """
-        return self._centroid_segment[0] + self._ymin_segment
+        return self._centroid[1] + self.ymin_stamp
 
     def _covariance_generic(self, xc, yc):
         """
@@ -682,19 +593,26 @@ class SourceMorphology(object):
         second-order moments as the source, with respect to ``(xc, yc)``.
         """
         # skimage wants double precision:
-        image = np.float64(self._cutout_segment_maskzeroed_no_bg)
-        # Ignore negative values (otherwise eigvals can be negative):
-        image = np.where(image > 0, image, 0.0)
+        image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
 
-        # Calculate moments w.r.t. center
-        xc, yc = xc - self._xmin_segment, yc - self._ymin_segment
-        mc = skimage.measure.moments_central(image, yc, xc, order=3)
+        # Calculate moments w.r.t. given center
+        xc, yc = xc - self.xmin_stamp, yc - self.ymin_stamp
+        mc = skimage.measure.moments_central(image, yc, xc, order=2)
         assert mc[0, 0] > 0
 
         covariance = np.array([
             [mc[2, 0], mc[1, 1]],
             [mc[1, 1], mc[0, 2]]])
         covariance /= mc[0, 0]  # normalize
+        
+        if covariance[0, 0] < 0:
+            warnings.warn('Negative covariance!', AstropyUserWarning)
+            covariance[0, 0] *= -1.0
+            self.flag = 1
+        if covariance[1, 1] < 0:
+            warnings.warn('Negative covariance!', AstropyUserWarning)
+            covariance[1, 1] *= -1.0
+            self.flag = 1
         
         # This checks the covariance matrix and modifies it in the
         # case of "infinitely thin" sources by iteratively increasing
@@ -790,30 +708,27 @@ class SourceMorphology(object):
     @lazyproperty
     def _slice_stamp(self):
         """
-        Attempt to create a square slice (centered at the centroid)
-        that is a bit larger than the minimal bounding box containing
-        the main labeled segment. Note that the cutout may not be
-        square when the source is close to a border of the original image.
+        Attempt to create a square slice that is somewhat larger
+        than the minimal bounding box containing the labeled segment.
+        Note that the cutout may not be square when the source is
+        close to a border of the original image.
         """
-        # Maximum distance to any side of the bounding box
-        yc, xc = np.int64(self.yc_centroid), np.int64(self.xc_centroid)
-        xmin, ymin = self._xmin_segment, self._ymin_segment
-        xmax, ymax = self._xmax_segment, self._ymax_segment
-        dist = max(xmax-xc, xc-xmin, ymax-yc, yc-ymin)
-
-        # Add some extra space in each dimension
         assert self._cutout_extent >= 1.0
-        dist = int(dist * self._cutout_extent)
-        
-        # Make sure that cutout size is at least ``min_cutout_size``
         assert self._min_cutout_size >= 2
+        # Get dimensions of original bounding box
+        s = self._segmap.slices[self.label - 1]
+        xmin, xmax = s[1].start, s[1].stop - 1
+        ymin, ymax = s[0].start, s[0].stop - 1
+        dx, dy = xmax + 1 - xmin, ymax + 1 - ymin
+        xc, yc = xmin + dx//2, ymin + dy//2
+        # Add some extra space in each dimension
+        dist = int(max(dx, dy) * self._cutout_extent / 2.0)
+        # Make sure that cutout size is at least ``min_cutout_size``
         dist = max(dist, self._min_cutout_size // 2)
-
         # Make cutout
         ny, nx = self._image.shape
         slice_stamp = (slice(max(0, yc-dist), min(ny, yc+dist)),
                        slice(max(0, xc-dist), min(nx, xc+dist)))
-
         return slice_stamp
 
     @lazyproperty
@@ -859,6 +774,28 @@ class SourceMorphology(object):
         return self.ymax_stamp + 1 - self.ymin_stamp
 
     @lazyproperty
+    def _mask_stamp_nan(self):
+        """
+        Flag any NaN or inf values within the postage stamp.
+        """
+        locs_invalid = ~np.isfinite(self._image[self._slice_stamp])
+        if self._weightmap is not None:
+            locs_invalid |= ~np.isfinite(self._weightmap[self._slice_stamp])
+        return locs_invalid
+
+    @lazyproperty
+    def _mask_stamp_badpixels(self):
+        """
+        Flag badpixels (outliers).
+        """
+        self.num_badpixels = -1
+        badpixels = np.zeros((self.ny_stamp, self.nx_stamp), dtype=np.bool8)
+        if self._n_sigma_outlier > 0:
+            badpixels = self._get_badpixels(self._image[self._slice_stamp])
+            self.num_badpixels = np.sum(badpixels)
+        return badpixels
+
+    @lazyproperty
     def _mask_stamp(self):
         """
         Create a total binary mask for the "postage stamp".
@@ -869,7 +806,9 @@ class SourceMorphology(object):
         segmap_stamp = self._segmap.data[self._slice_stamp]
         mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self.label)
         if self._mask is not None:
-            mask_stamp = mask_stamp | self._mask[self._slice_stamp]
+            mask_stamp |= self._mask[self._slice_stamp]
+        mask_stamp |= self._mask_stamp_nan
+        mask_stamp |= self._mask_stamp_badpixels
         return mask_stamp
 
     @lazyproperty
@@ -878,10 +817,7 @@ class SourceMorphology(object):
         Similar to ``_mask_stamp``, but also mask the background.
         """
         segmap_stamp = self._segmap.data[self._slice_stamp]
-        mask_stamp = segmap_stamp != self.label
-        if self._mask is not None:
-            mask_stamp = mask_stamp | self._mask[self._slice_stamp]
-        return mask_stamp
+        return self._mask_stamp | (segmap_stamp == 0)
 
     @lazyproperty
     def _cutout_stamp_maskzeroed(self):
@@ -890,10 +826,12 @@ class SourceMorphology(object):
         by ``_slice_stamp``. Pixels belonging to other sources
         (as well as pixels where ``mask`` == 1) are set to zero,
         but the background is left alone.
+        
+        In addition, NaN or inf values are removed at this point,
+        as well as badpixels (outliers).
         """
-        cutout_stamp = np.where(~self._mask_stamp,
-                                self._image[self._slice_stamp], 0.0)
-        return cutout_stamp
+        return np.where(~self._mask_stamp,
+                        self._image[self._slice_stamp], 0.0)
 
     @lazyproperty
     def _cutout_stamp_maskzeroed_no_bg(self):
@@ -902,7 +840,27 @@ class SourceMorphology(object):
         background.
         """
         return np.where(~self._mask_stamp_no_bg,
-                        self._cutout_stamp_maskzeroed, 0.0)
+                        self._image[self._slice_stamp], 0.0)
+
+    @lazyproperty
+    def _weightmap_stamp(self):
+        """
+        Return a cutout of the weight map over the "postage stamp" region.
+        If a weightmap is not provided as input, it is created using the
+        ``gain`` argument.
+        """
+        if self._weightmap is None:
+            if self._gain is None:
+                raise Exception('Must provide either weightmap or gain.')
+            else:
+                assert gain > 0
+                weightmap_stamp = np.sqrt(
+                    np.abs(self._image[self._slice_stamp])/gain + self.sky_sigma**2)
+        else:
+            weightmap_stamp = self._weightmap[self._slice_stamp]
+
+        weightmap_stamp[self._mask_stamp_nan] = 0.0
+        return weightmap_stamp
 
     @lazyproperty
     def _sorted_pixelvals_stamp_no_bg(self):
@@ -1311,7 +1269,7 @@ class SourceMorphology(object):
         """
         Calculate the signal-to-noise per pixel using the Petrosian segmap.
         """
-        weightmap = self._weightmap[self._slice_stamp]
+        weightmap = self._weightmap_stamp
         if np.any(weightmap < 0):
             warnings.warn('[sn_per_pixel] Some negative weightmap values.',
                           AstropyUserWarning)
@@ -2315,7 +2273,7 @@ class SourceMorphology(object):
         # Prepare data for fitting
         z = image.copy()
         y, x = np.mgrid[0:ny, 0:nx]
-        weightmap = self._weightmap[self._slice_stamp]
+        weightmap = self._weightmap_stamp
         # Exclude pixels with image == 0 or weightmap == 0 from the fit.
         fit_weights = np.zeros_like(z)
         locs = (image != 0) & (weightmap != 0)
