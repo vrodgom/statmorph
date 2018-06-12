@@ -568,10 +568,10 @@ class SourceMorphology(object):
         image = np.float64(self._cutout_stamp_maskzeroed_no_bg)  # skimage wants double
 
         # Calculate centroid
-        m = skimage.measure.moments(image, order=1)
-        assert m[0, 0] > 0
-        yc = m[0, 1] / m[0, 0]
-        xc = m[1, 0] / m[0, 0]
+        M = skimage.measure.moments(image, order=1)
+        assert M[0, 0] > 0
+        yc = M[1, 0] / M[0, 0]
+        xc = M[0, 1] / M[0, 0]
         yc += 0.5; xc += 0.5  # shift pixel positions
 
         return np.array([xc, yc])
@@ -599,15 +599,15 @@ class SourceMorphology(object):
         image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
 
         # Calculate moments w.r.t. given center
-        xc = xc - self.xmin_stamp - 0.5  # lower-left corner of pixel
+        xc = xc - self.xmin_stamp - 0.5  # w.r.t. lower-left corner of pixels
         yc = yc - self.ymin_stamp - 0.5
-        mc = skimage.measure.moments_central(image, yc, xc, order=2)
-        assert mc[0, 0] > 0
+        Mc = skimage.measure.moments_central(image, center=(yc, xc), order=2)
+        assert Mc[0, 0] > 0
 
         covariance = np.array([
-            [mc[2, 0], mc[1, 1]],
-            [mc[1, 1], mc[0, 2]]])
-        covariance /= mc[0, 0]  # normalize
+            [Mc[0, 2], Mc[1, 1]],
+            [Mc[1, 1], Mc[2, 0]]])
+        covariance /= Mc[0, 0]  # normalize
         
         if covariance[0, 0] < 0:
             warnings.warn('Negative covariance!', AstropyUserWarning)
@@ -1225,15 +1225,16 @@ class SourceMorphology(object):
         image = np.float64(image)  # skimage wants double
 
         # Calculate centroid
-        m = skimage.measure.moments(image, order=1)
-        assert m[0, 0] > 0
-        yc = m[0, 1] / m[0, 0]
-        xc = m[1, 0] / m[0, 0]
-        yc += 0.5; xc += 0.5  # shift pixel positions
+        M = skimage.measure.moments(image, order=1)
+        assert M[0, 0] > 0
+        yc = M[1, 0] / M[0, 0]
+        xc = M[0, 1] / M[0, 0]
+        # Note that we do not shift (yc, xc) by 0.5 pixels here, since
+        # (yc, xc) are only used as input for other skimage functions.
 
         # Calculate second total central moment
-        mc = skimage.measure.moments_central(image, yc, xc, order=3)
-        second_moment = mc[0, 2] + mc[2, 0]
+        Mc = skimage.measure.moments_central(image, center=(yc, xc), order=2)
+        second_moment_tot = Mc[0, 2] + Mc[2, 0]
 
         # Calculate threshold pixel value
         sorted_pixelvals = np.sort(image.flatten())
@@ -1249,16 +1250,16 @@ class SourceMorphology(object):
 
         # Calculate second moment of the brightest pixels
         image_20 = np.where(image >= threshold, image, 0.0)
-        mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=2)
-        second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
+        Mc_20 = skimage.measure.moments_central(image_20, center=(yc, xc), order=2)
+        second_moment_20 = Mc_20[0, 2] + Mc_20[2, 0]
 
-        if (second_moment_20 <= 0) | (second_moment <= 0):
+        if (second_moment_20 <= 0) | (second_moment_tot <= 0):
             warnings.warn('[m20] Negative second moment(s).',
                           AstropyUserWarning)
             self.flag = 1
             m20 = -99.0  # invalid
         else:
-            m20 = np.log10(second_moment_20 / second_moment)
+            m20 = np.log10(second_moment_20 / second_moment_tot)
 
         return m20
 
@@ -1994,10 +1995,10 @@ class SourceMorphology(object):
         yp = sorted_ypeak[0] + 0.5
         
         # Calculate centroid
-        m = skimage.measure.moments(image, order=1)
-        assert m[0, 0] > 0
-        yc = m[0, 1] / m[0, 0]
-        xc = m[1, 0] / m[0, 0]
+        M = skimage.measure.moments(image, order=1)
+        assert M[0, 0] > 0
+        yc = M[1, 0] / M[0, 0]
+        xc = M[0, 1] / M[0, 0]
         yc += 0.5; xc += 0.5  # shift pixel positions
 
         area = np.sum(self._segmap_mid)
