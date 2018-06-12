@@ -31,7 +31,7 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     keywords='astronomy galaxies galaxy-morphology non-parametric',
-    packages=['statmorph'],
+    packages=['statmorph', 'statmorph.tests'],
     install_requires=['scipy>=0.19',
                       'scikit-image>=0.13',
                       'astropy>=2.0',

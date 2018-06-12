@@ -22,7 +22,10 @@ from astropy.modeling import models, fitting
 from astropy.utils.exceptions import AstropyUserWarning
 import photutils
 
-__all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology']
+__all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
+           '__version__']
+
+__version__ = '0.2.1'
 
 def _quantile(sorted_values, q):
     """

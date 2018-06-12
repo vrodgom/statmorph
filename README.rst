@@ -70,6 +70,15 @@ extract the contents of the zipfile, and run:
 
     python setup.py install
 
+Running the built-in tests
+--------------------------
+
+To test that the installation was successful, run:
+
+.. code:: bash
+
+    python -c "import statmorph.tests; statmorph.tests.runall()"
+
 Authors
 -------
 
