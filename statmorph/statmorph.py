@@ -399,6 +399,7 @@ class SourceMorphology(object):
         assert self._segmap.data.shape == self._image.shape
         if self._mask is not None:
             assert self._mask.shape == self._image.shape
+            assert self._mask.dtype == np.bool8
         if self._weightmap is not None:
             assert self._weightmap.shape == self._image.shape
 
@@ -565,8 +566,10 @@ class SourceMorphology(object):
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
+        assert m[0, 0] > 0
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
+        yc += 0.5; xc += 0.5  # shift pixel positions
 
         return np.array([xc, yc])
 
@@ -593,7 +596,8 @@ class SourceMorphology(object):
         image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
 
         # Calculate moments w.r.t. given center
-        xc, yc = xc - self.xmin_stamp, yc - self.ymin_stamp
+        xc = xc - self.xmin_stamp - 0.5  # lower-left corner of pixel
+        yc = yc - self.ymin_stamp - 0.5
         mc = skimage.measure.moments_central(image, yc, xc, order=2)
         assert mc[0, 0] > 0
 
@@ -1219,8 +1223,10 @@ class SourceMorphology(object):
 
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
+        assert m[0, 0] > 0
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
+        yc += 0.5; xc += 0.5  # shift pixel positions
 
         # Calculate second total central moment
         mc = skimage.measure.moments_central(image, yc, xc, order=3)
@@ -1240,7 +1246,7 @@ class SourceMorphology(object):
 
         # Calculate second moment of the brightest pixels
         image_20 = np.where(image >= threshold, image, 0.0)
-        mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=3)
+        mc_20 = skimage.measure.moments_central(image_20, yc, xc, order=2)
         second_moment_20 = mc_20[0, 2] + mc_20[2, 0]
 
         if (second_moment_20 <= 0) | (second_moment <= 0):
@@ -1986,8 +1992,10 @@ class SourceMorphology(object):
         
         # Calculate centroid
         m = skimage.measure.moments(image, order=1)
+        assert m[0, 0] > 0
         yc = m[0, 1] / m[0, 0]
         xc = m[1, 0] / m[0, 0]
+        yc += 0.5; xc += 0.5  # shift pixel positions
 
         area = np.sum(self._segmap_mid)
         D = np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
@@ -2429,4 +2437,3 @@ def source_morphology(image, segmap, **kwargs):
         print('Finished processing source %d.\n' % (label))
 
     return sources_morph
-
