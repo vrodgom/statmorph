@@ -51,9 +51,6 @@ The easiest way to install this package is within the Anaconda environment:
 
     conda install -c conda-forge statmorph
 
-If you do not have Anaconda installed yet, you should have a look at
-`astroconda <https://astroconda.readthedocs.io>`_.
-
 Alternatively, assuming that you already have recent versions of scipy,
 scikit-image, astropy and photutils installed, statmorph can also be
 installed via PyPI:

@@ -394,8 +394,8 @@ class SourceMorphology(object):
         # Measure runtime
         start = time.time()
 
-        if not isinstance(segmap, photutils.SegmentationImage):
-            segmap = photutils.SegmentationImage(segmap)
+        if not isinstance(self._segmap, photutils.SegmentationImage):
+            self._segmap = photutils.SegmentationImage(self._segmap)
 
         # Check sanity of input data
         self._segmap.check_label(self.label)
@@ -608,52 +608,63 @@ class SourceMorphology(object):
             [Mc[0, 2], Mc[1, 1]],
             [Mc[1, 1], Mc[2, 0]]])
         covariance /= Mc[0, 0]  # normalize
-        
-        if covariance[0, 0] < 0:
-            warnings.warn('Negative covariance!', AstropyUserWarning)
-            covariance[0, 0] *= -1.0
+
+        # If there are nonpositive second moments, we deal with them,
+        # but we indicate that there's something wrong with the data.
+        if (covariance[0, 0] <= 0) or (covariance[1, 1] <= 0):
+            warnings.warn('Nonpositive second moment.', AstropyUserWarning)
             self.flag = 1
-        if covariance[1, 1] < 0:
-            warnings.warn('Negative covariance!', AstropyUserWarning)
-            covariance[1, 1] *= -1.0
-            self.flag = 1
-        
-        # This checks the covariance matrix and modifies it in the
-        # case of "infinitely thin" sources by iteratively increasing
-        # the diagonal elements:
-        covariance = photutils.SourceProperties._check_covariance(covariance)
-        
+
+        # Modify covariance matrix in case of "infinitely thin" sources
+        # by iteratively increasing the diagonal elements (see SExtractor
+        # manual, eq. 43). Note that we allow negative moments.
+        rho = 1.0 / 12.0  # variance of 1 pixel-wide top-hat distribution
+        x2, xy, xy, y2 = covariance.flat
+        while np.abs(x2*y2 - xy**2) < rho**2:
+            x2 += (x2 >= 0) * rho - (x2 < 0) * rho  # np.sign(0) == 0 is no good
+            y2 += (y2 >= 0) * rho - (y2 < 0) * rho
+        covariance = np.array([[x2, xy],
+                               [xy, y2]])
+
         return covariance
 
     def _eigvals_generic(self, covariance):
         """
         The ordered (largest first) eigenvalues of the covariance
         matrix, which correspond to the *squared* semimajor and
-        semiminor axes.
+        semiminor axes. Note that we allow negative eigenvalues.
         """
         eigvals = np.linalg.eigvals(covariance)
-        eigvals = np.sort(eigvals)[::-1]  # largest first
-        assert np.all(eigvals > 0)
-        
+        eigvals = np.sort(np.abs(eigvals))[::-1]  # largest first (by abs. value)
+
+        # We deal with negative eigenvalues, but we indicate that something
+        # is not OK with the data (eigenvalues cannot be exactly zero after
+        # the SExtractor-like regularization routine).
+        if np.any(eigvals < 0):
+            warnings.warn('Some negative eigenvalues.', AstropyUserWarning)
+            self.flag = 1
+
         return eigvals
 
     def _ellipticity_generic(self, eigvals):
         """
         The ellipticity of (the Gaussian function that has the same
-        second-order moments as) the source.
+        second-order moments as) the source. Note that we allow
+        negative eigenvalues.
         """
-        a = np.sqrt(eigvals[0])
-        b = np.sqrt(eigvals[1])
+        a = np.sqrt(np.abs(eigvals[0]))
+        b = np.sqrt(np.abs(eigvals[1]))
 
         return 1.0 - (b / a)
 
     def _elongation_generic(self, eigvals):
         """
         The elongation of (the Gaussian function that has the same
-        second-order moments as) the source.
+        second-order moments as) the source. Note that we allow
+        negative eigenvalues.
         """
-        a = np.sqrt(eigvals[0])
-        b = np.sqrt(eigvals[1])
+        a = np.sqrt(np.abs(eigvals[0]))
+        b = np.sqrt(np.abs(eigvals[1]))
 
         return a / b
 
@@ -661,10 +672,10 @@ class SourceMorphology(object):
         """
         The orientation (in radians) of the source.
         """
-        A, B, B, C = covariance.flat
+        x2, xy, xy, y2 = covariance.flat
         
-        # This comes from the equation of a rotated ellipse:
-        theta = 0.5 * np.arctan2(2.0 * B, A - C)
+        # SExtractor manual, eq. (21):
+        theta = 0.5 * np.arctan2(2.0 * xy, x2 - y2)
         
         return theta
 
