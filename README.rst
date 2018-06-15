@@ -21,7 +21,7 @@ morphological statistics for each source:
 - Some properties associated to the above statistics (Petrosian radii,
   half-light radii, etc.)
 
-Although the Sersic index is, by definition, the opposite of a non-parametric
+Although the Sersic index is the opposite of a non-parametric
 morphological quantity, it is included anyway due to its popularity.
 
 This Python implementation is largely based on IDL code originally

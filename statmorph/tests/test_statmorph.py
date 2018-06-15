@@ -6,6 +6,7 @@ Tests for the statmorph morphology code. Based on the tutorial example.
 from __future__ import absolute_import, division, print_function
 
 import numpy as np
+import os
 import time
 import statmorph
 from astropy.io import fits
@@ -52,7 +53,8 @@ def test1():
     """
     Check values for a randomly chosen galaxy.
     """
-    hdulist = fits.open('data_slice.fits')
+    curdir = os.path.dirname(__file__)
+    hdulist = fits.open('%s/data_slice.fits' % (curdir))
     image = hdulist[0].data
     segmap = hdulist[1].data
     mask = np.bool8(hdulist[2].data)

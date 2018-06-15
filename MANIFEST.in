@@ -1,4 +1,4 @@
 include LICENSE
 include *.rst *.txt
-recursive-include statmorph *.py
+recursive-include statmorph *.py *.fits
 recursive-include notebooks *.ipynb
