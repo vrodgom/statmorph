@@ -267,6 +267,8 @@ class SourceMorphology(object):
         A 2D segmentation map where different sources are 
         labeled with different positive integer values.
         A value of zero is reserved for the background.
+        It is assumed that the sum of pixel values within each
+        labeled segment is positive.
     label : int
         A label indicating the source of interest.
     mask : array-like (bool), optional
@@ -569,7 +571,7 @@ class SourceMorphology(object):
 
         # Calculate centroid
         M = skimage.measure.moments(image, order=1)
-        assert M[0, 0] > 0
+        assert M[0, 0] > 0  # already checked by constructor
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
         yc += 0.5; xc += 0.5  # shift pixel positions
@@ -1237,11 +1239,15 @@ class SourceMorphology(object):
 
         # Calculate centroid
         M = skimage.measure.moments(image, order=1)
-        assert M[0, 0] > 0
+        if M[0, 0] <= 0:
+            warnings.warn('[deviation] Nonpositive flux within Gini segmap.',
+                          AstropyUserWarning)
+            self.flag = 1
+            return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
         # Note that we do not shift (yc, xc) by 0.5 pixels here, since
-        # (yc, xc) are only used as input for other skimage functions.
+        # (yc, xc) is only used as input for other skimage functions.
 
         # Calculate second total central moment
         Mc = skimage.measure.moments_central(image, center=(yc, xc), order=2)
@@ -2007,7 +2013,11 @@ class SourceMorphology(object):
         
         # Calculate centroid
         M = skimage.measure.moments(image, order=1)
-        assert M[0, 0] > 0
+        if M[0, 0] <= 0:
+            warnings.warn('[deviation] Nonpositive flux within MID segmap.',
+                          AstropyUserWarning)
+            self.flag = 1
+            return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
         yc += 0.5; xc += 0.5  # shift pixel positions
