@@ -32,6 +32,7 @@ setup(
     ],
     keywords='astronomy galaxies galaxy-morphology non-parametric',
     packages=['statmorph', 'statmorph.tests'],
+    include_package_data=True,
     install_requires=['scipy>=0.19',
                       'scikit-image>=0.14',
                       'astropy>=2.0',
