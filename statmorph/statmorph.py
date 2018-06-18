@@ -25,7 +25,7 @@ import photutils
 __all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
            '__version__']
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 def _quantile(sorted_values, q):
     """
