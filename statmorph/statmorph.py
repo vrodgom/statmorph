@@ -282,10 +282,11 @@ class SourceMorphology(object):
         sometimes produce a weight map in units of the variance (RMS^2)
         or the inverse variance (1/RMS^2).
     gain : scalar, optional
-        A conversion factor that is multiplied by the image data to
-        obtain counts/pixel (the counts can be electrons or simulation
-        particles, depending on the type of image). This is only used
-        when ``weightmap`` is not provided.
+        A multiplication factor that converts the image units into
+        electrons/beam (or electrons/pixel, if all pixel values are
+        independent from each other), which is then used to calculate
+        the weight map (i.e., the sigma-image) using Poisson statistics.
+        This parameter is only used when ``weightmap`` is not provided.
     psf : array-like, optional
         A 2D array representing the PSF, where the central pixel
         corresponds to the center of the PSF. Typically, including
