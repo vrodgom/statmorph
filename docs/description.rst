@@ -25,9 +25,8 @@ In addition, *one* of the following two parameters is also required:
   provided by the user, then it is computed internally using the ``gain``
   keyword argument.
 - ``gain`` : A scalar that, when multiplied by the image, converts the image
-  units into electrons/beam (or electrons/pixel, if the pixel values are
-  independent). This parameter is required when ``weightmap`` is not
-  provided by the user.
+  units into electrons/pixel. This parameter is required when ``weightmap``
+  is not provided by the user.
 
 Optionally, the function can also accept:
 

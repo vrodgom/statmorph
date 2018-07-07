@@ -283,9 +283,8 @@ class SourceMorphology(object):
         or the inverse variance (1/RMS^2).
     gain : scalar, optional
         A multiplication factor that converts the image units into
-        electrons/beam (or electrons/pixel, if all pixel values are
-        independent from each other), which is then used to calculate
-        the weight map (i.e., the sigma-image) using Poisson statistics.
+        electrons/pixel, which is used internally to calculate the
+        weight map (i.e., the sigma-image) using Poisson statistics.
         This parameter is only used when ``weightmap`` is not provided.
     psf : array-like, optional
         A 2D array representing the PSF, where the central pixel
@@ -436,7 +435,7 @@ class SourceMorphology(object):
 
         # Position of the source's brightest pixel relative to the stamp cutout:
         maxval = np.max(self._cutout_stamp_maskzeroed_no_bg)
-        maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed == maxval)[0]
+        maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed_no_bg == maxval)[0]
         self._x_maxval_stamp = maxval_stamp_pos[1]
         self._y_maxval_stamp = maxval_stamp_pos[0]
 
