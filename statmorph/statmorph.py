@@ -508,6 +508,7 @@ class SourceMorphology(object):
             'rhalf_circ',
             'rhalf_ellip',
             'r20',
+            'r50',
             'r80',
             'gini',
             'm20',
@@ -1632,6 +1633,14 @@ class SourceMorphology(object):
         'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.2)
+
+    @lazyproperty
+    def r50(self):
+        """
+        The radius that contains 50% of the light within
+        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
+        """
+        return self._radius_at_fraction_of_total_cas(0.5)
 
     @lazyproperty
     def r80(self):
