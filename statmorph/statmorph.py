@@ -321,7 +321,7 @@ class SourceMorphology(object):
     skybox_size : int, optional
         The target size (in pixels) of the "skybox" used to characterize
         the sky background.
-    petro_extent_circ : float, optional
+    petro_extent_cas : float, optional
         The radius of the circular aperture used for the asymmetry
         calculation, in units of the circular Petrosian radius. The
         default value is 1.5.
@@ -340,10 +340,12 @@ class SourceMorphology(object):
     sigma_mid : float, optional
         In the MID calculations, this is the smoothing scale (in pixels)
         used to compute the intensity (I) statistic. The default is 1.0.
-    petro_extent_ellip : float, optional
-        The inner radius, in units of the Petrosian "radius", of the
-        elliptical aperture used to estimate the sky background in the
-        shape asymmetry calculation. The default value is 2.0.
+    petro_extent_flux : float, optional
+        The number of Petrosian radii used to define the aperture over
+        which the flux is measured. This is also used to define the inner
+        "radius" of the elliptical aperture used to estimate the sky
+        background in the shape asymmetry calculation. Following SDSS,
+        the default value is 2.0.
     boxcar_size_shape_asym : float, optional
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
@@ -365,9 +367,9 @@ class SourceMorphology(object):
                  gain=None, psf=None, cutout_extent=1.5, min_cutout_size=48,
                  n_sigma_outlier=10, annulus_width=1.0,
                  eta=0.2, petro_fraction_gini=0.2, skybox_size=32,
-                 petro_extent_circ=1.5, petro_fraction_cas=0.25,
+                 petro_extent_cas=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
-                 petro_extent_ellip=2.0, boxcar_size_shape_asym=3.0,
+                 petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
                  sersic_maxiter=500, segmap_overlap_ratio=0.5):
         self._image = image
         self._segmap = segmap
@@ -383,12 +385,12 @@ class SourceMorphology(object):
         self._eta = eta
         self._petro_fraction_gini = petro_fraction_gini
         self._skybox_size = skybox_size
-        self._petro_extent_circ = petro_extent_circ
+        self._petro_extent_cas = petro_extent_cas
         self._petro_fraction_cas = petro_fraction_cas
         self._boxcar_size_mid = boxcar_size_mid
         self._niter_bh_mid = niter_bh_mid
         self._sigma_mid = sigma_mid
-        self._petro_extent_ellip = petro_extent_ellip
+        self._petro_extent_flux = petro_extent_flux
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
@@ -1018,11 +1020,12 @@ class SourceMorphology(object):
     @lazyproperty
     def flux_circ(self):
         """
-        Return the sum of the pixel values over a circular Petrosian
-        aperture.
+        Return the sum of the pixel values over a circular aperture
+        with radius equal to ``petro_extent_flux`` (usually 2) times
+        the circular Petrosian radius.
         """
         image = self._cutout_stamp_maskzeroed
-        r = self.rpetro_circ
+        r = self.petro_extent_flux * self.rpetro_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
@@ -1131,11 +1134,12 @@ class SourceMorphology(object):
     @lazyproperty
     def flux_ellip(self):
         """
-        Return the sum of the pixel values over an elliptical Petrosian
-        aperture.
+        Return the sum of the pixel values over an elliptical aperture
+        with "radius" equal to ``petro_extent_flux`` (usually 2) times
+        the elliptical Petrosian "radius".
         """
         image = self._cutout_stamp_maskzeroed
-        a = self.rpetro_ellip
+        a = self.petro_extent_flux * self.rpetro_ellip
         b = a / self.elongation_asymmetry
         theta = self.orientation_asymmetry
         ap = photutils.EllipticalAperture(self._asymmetry_center, a, b, theta)
@@ -1466,7 +1470,7 @@ class SourceMorphology(object):
 
         # Create aperture for the chosen kind of asymmetry
         if kind == 'cas':
-            r = self._petro_extent_circ * self._rpetro_circ_centroid
+            r = self._petro_extent_cas * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
             r_in = self.rhalf_circ
@@ -1613,7 +1617,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
-        r_upper = self._petro_extent_circ * self.rpetro_circ
+        r_upper = self._petro_extent_cas * self.rpetro_circ
         
         r, flag = _radius_at_fraction_of_total_circ(image, center, r_upper, fraction)
         self.flag = max(self.flag, flag)
@@ -1630,7 +1634,7 @@ class SourceMorphology(object):
     def r20(self):
         """
         The radius that contains 20% of the light within
-        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
+        'petro_extent_cas' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.2)
 
@@ -1638,7 +1642,7 @@ class SourceMorphology(object):
     def r50(self):
         """
         The radius that contains 50% of the light within
-        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
+        'petro_extent_cas' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.5)
 
@@ -1646,7 +1650,7 @@ class SourceMorphology(object):
     def r80(self):
         """
         The radius that contains 80% of the light within
-        'petro_extent_circ' (usually 1.5) times 'rpetro_circ'.
+        'petro_extent_cas' (usually 1.5) times 'rpetro_circ'.
         """
         return self._radius_at_fraction_of_total_cas(0.8)
 
@@ -1668,7 +1672,7 @@ class SourceMorphology(object):
         Calculate smoothness (a.k.a. clumpiness) as described in
         Lotz et al. (2004).
         """
-        r = self._petro_extent_circ * self.rpetro_circ
+        r = self._petro_extent_cas * self.rpetro_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
 
         image = self._cutout_stamp_maskzeroed
@@ -2112,8 +2116,8 @@ class SourceMorphology(object):
 
         # Create a circular annulus around the center
         # that only contains background sky (hopefully).
-        r_in = self._petro_extent_ellip * self.rpetro_ellip
-        r_out = 2.0 * self._petro_extent_ellip * self.rpetro_ellip
+        r_in = self._petro_extent_flux * self.rpetro_ellip
+        r_out = 2.0 * self._petro_extent_flux * self.rpetro_ellip
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
