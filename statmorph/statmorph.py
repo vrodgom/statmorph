@@ -449,6 +449,11 @@ class SourceMorphology(object):
         # For simplicity, evaluate all "lazy" properties at once:
         self._calculate_morphology()
 
+        # Check if image is background-subtracted; set flag=1 if not.
+        if np.abs(self.sky_mean) > self.sky_sigma:
+            warnings.warn('Image is not background-subtracted.', AstropyUserWarning)
+            self.flag = 1
+
         # Check segmaps and set flag=1 if they are very different
         self._check_segmaps()
 
