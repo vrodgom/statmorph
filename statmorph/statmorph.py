@@ -2274,29 +2274,13 @@ class SourceMorphology(object):
         return asym
 
     @lazyproperty
-    def _shape_asymmetry_center(self):
-        """
-        Find the position of the central pixel (relative to the
-        "postage stamp" cutout) that minimizes the shape asymmetry.
-        """
-        image = np.where(self._segmap_shape_asym, 1.0, 0.0)
-
-        # Initial guess
-        center_0 = self._asymmetry_center
-        
-        # Find minimum at pixel precision (xtol=1)
-        center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'shape'), xtol=1e-6, disp=0)
-
-        return center_asym
-
-    @lazyproperty
     def shape_asymmetry(self):
         """
         Calculate shape asymmetry as described in Pawlik et al. (2016).
+        Note that the center is the one used for the standard asymmetry.
         """
         image = np.where(self._segmap_shape_asym, 1.0, 0.0)
-        asym = self._asymmetry_function(self._shape_asymmetry_center,
+        asym = self._asymmetry_function(self._asymmetry_center,
                                         image, 'shape')
 
         return asym
