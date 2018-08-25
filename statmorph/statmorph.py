@@ -1481,14 +1481,16 @@ class SourceMorphology(object):
             r = self._petro_extent_cas * self._rpetro_circ_centroid
             ap = photutils.CircularAperture(center, r)
         elif kind == 'outer':
-            r_in = self.rhalf_circ
-            r_out = self.rmax_circ
-            if np.isnan(r_in) or np.isnan(r_out) or (r_in <= 0) or (r_out <= 0):
-                warnings.warn('[shape_asym] Invalid annulus dimensions.',
+            a_in = self.rhalf_ellip
+            a_out = self.rmax_ellip
+            b_out = a_out / self.elongation_asymmetry
+            theta = self.orientation_asymmetry
+            if np.isnan(a_in) or np.isnan(a_out) or (a_in <= 0) or (a_out <= 0):
+                warnings.warn('[outer_asym] Invalid annulus dimensions.',
                               AstropyUserWarning)
                 self.flag = 1
                 return -99.0  # invalid
-            ap = photutils.CircularAnnulus(center, r_in, r_out)
+            ap = photutils.EllipticalAnnulus(center, a_in, a_out, b_out, theta)
         elif kind == 'shape':
             if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
                 warnings.warn('[shape_asym] Invalid rmax_circ value.',
