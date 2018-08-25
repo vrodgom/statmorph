@@ -1428,7 +1428,10 @@ class SourceMorphology(object):
         boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         bkg_smooth = ndi.uniform_filter(bkg, size=boxcar_size)
 
-        return np.sum(np.abs(bkg_smooth - bkg)) / float(bkg.size)
+        bkg_diff = bkg - bkg_smooth
+        bkg_diff[bkg_diff < 0] = 0.0  # set negative pixels to zero
+
+        return np.sum(bkg_diff) / float(bkg.size)
 
     def _asymmetry_function(self, center, image, kind):
         """
@@ -1675,23 +1678,34 @@ class SourceMorphology(object):
     def smoothness(self):
         """
         Calculate smoothness (a.k.a. clumpiness) as described in
-        Lotz et al. (2004).
+        Conselice (2003).
         """
-        r = self._petro_extent_cas * self.rpetro_circ
-        ap = photutils.CircularAperture(self._asymmetry_center, r)
-
         image = self._cutout_stamp_maskzeroed
-        
+
+        # Exclude central region during smoothness calculation:
+        r_in = self._petro_fraction_cas * self.rpetro_circ
+        r_out = self._petro_extent_cas * self.rpetro_circ
+        ap = photutils.CircularAnnulus(self._asymmetry_center, r_in, r_out)
+
         boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         image_smooth = ndi.uniform_filter(image, size=boxcar_size)
         
-        ap_abs_flux = ap.do_photometry(np.abs(image), method='exact')[0][0]
-        ap_abs_diff = ap.do_photometry(
-            np.abs(image_smooth - image), method='exact')[0][0]
+        image_diff = image - image_smooth
+        image_diff[image_diff < 0] = 0.0  # set negative pixels to zero
+
+        ap_flux = ap.do_photometry(image, method='exact')[0][0]
+        ap_diff = ap.do_photometry(image_diff, method='exact')[0][0]
+
+        if ap_flux <= 0:
+            warnings.warn('[smoothness] Nonpositive total flux.',
+                          AstropyUserWarning)
+            self.flag = 1
+            return -99.0  # invalid
+
         if self._sky_smoothness == -99.0:  # invalid skybox
-            S = ap_abs_diff / ap_abs_flux
+            S = ap_diff / ap_flux
         else:
-            S = (ap_abs_diff - ap.area()*self._sky_smoothness) / ap_abs_flux
+            S = (ap_diff - ap.area()*self._sky_smoothness) / ap_flux
 
         if not np.isfinite(S):
             warnings.warn('Invalid smoothness.', AstropyUserWarning)
