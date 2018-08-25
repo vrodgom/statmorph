@@ -210,17 +210,6 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
 
     return a, flag
 
-def bulge_statistic(G, M20):
-    """
-    For given values of Gini and M20, calculate F(G,M20), the bulge
-    statistic from Snyder et al. (2015).
-    """
-    F_norm = np.abs(-0.693*M20 + 4.95*G - 3.85)
-    F_sign = np.ones_like(F_norm)
-    F_sign[G < 0.14*M20 + 0.778] = -1.0
-    return F_sign * F_norm
-
-
 class ConvolvedSersic2D(models.Sersic2D):
     """
     Two-dimensional Sersic surface brightness profile, convolved with
@@ -520,6 +509,7 @@ class SourceMorphology(object):
             'gini',
             'm20',
             'gini_m20_bulge',
+            'gini_m20_merger',
             'sn_per_pixel',
             'concentration',
             'asymmetry',
@@ -1294,9 +1284,23 @@ class SourceMorphology(object):
     def gini_m20_bulge(self):
         """
         Return the Gini-M20 bulge statistic, F(G, M20), as defined
-        in Snyder et al. (2015).
+        in Rodriguez-Gomez et al. (2018).
         """
-        return bulge_statistic(self.gini, self.m20)
+        if (self.gini == -99.0) or (self.m20 == -99.0):
+            return -99.0  # invalid
+
+        return -0.693*M20 + 4.95*G - 3.96
+
+    @lazyproperty
+    def gini_m20_merger(self):
+        """
+        Return the Gini-M20 merger statistic, S(G, M20), as defined
+        in Rodriguez-Gomez et al. (2018).
+        """
+        if (self.gini == -99.0) or (self.m20 == -99.0):
+            return -99.0  # invalid
+
+        return 0.139*M20 + 0.990*G - 0.327
 
     @lazyproperty
     def sn_per_pixel(self):
