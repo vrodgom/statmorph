@@ -391,7 +391,7 @@ class SourceMorphology(object):
             self._segmap = photutils.SegmentationImage(self._segmap)
 
         # Check sanity of input data
-        self._segmap.check_label(self.label)
+        self._segmap.check_labels([self.label])
         assert self._segmap.data.shape == self._image.shape
         if self._mask is not None:
             assert self._mask.shape == self._image.shape
@@ -1020,7 +1020,7 @@ class SourceMorphology(object):
         the circular Petrosian radius.
         """
         image = self._cutout_stamp_maskzeroed
-        r = self.petro_extent_flux * self.rpetro_circ
+        r = self._petro_extent_flux * self.rpetro_circ
         ap = photutils.CircularAperture(self._asymmetry_center, r)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
@@ -1134,7 +1134,7 @@ class SourceMorphology(object):
         the elliptical Petrosian "radius".
         """
         image = self._cutout_stamp_maskzeroed
-        a = self.petro_extent_flux * self.rpetro_ellip
+        a = self._petro_extent_flux * self.rpetro_ellip
         b = a / self.elongation_asymmetry
         theta = self.orientation_asymmetry
         ap = photutils.EllipticalAperture(self._asymmetry_center, a, b, theta)
@@ -1289,7 +1289,7 @@ class SourceMorphology(object):
         if (self.gini == -99.0) or (self.m20 == -99.0):
             return -99.0  # invalid
 
-        return -0.693*M20 + 4.95*G - 3.96
+        return -0.693*self.m20 + 4.95*self.gini - 3.96
 
     @lazyproperty
     def gini_m20_merger(self):
@@ -1300,7 +1300,7 @@ class SourceMorphology(object):
         if (self.gini == -99.0) or (self.m20 == -99.0):
             return -99.0  # invalid
 
-        return 0.139*M20 + 0.990*G - 0.327
+        return 0.139*self.m20 + 0.990*self.gini - 0.327
 
     @lazyproperty
     def sn_per_pixel(self):
