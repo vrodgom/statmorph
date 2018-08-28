@@ -51,7 +51,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'statmorph'
-copyright = '2017, Vicente Rodriguez-Gomez'
+copyright = '2017-2018, Vicente Rodriguez-Gomez'
 author = 'Vicente Rodriguez-Gomez'
 
 # The version info for the project you're documenting, acts as replacement for

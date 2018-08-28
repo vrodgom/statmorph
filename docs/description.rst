@@ -1,10 +1,16 @@
 
-Description
-===========
+Brief description
+=================
 
 The main interface between the user and the code is the `source_morphology`
 function, which calculates the morphological parameters of a set of sources.
-Here we briefly describe the input and output of this function.
+Below we briefly describe the input and output of this function.
+
+A more detailed description of the input parameters and the measurements
+performed by statmorph can be found in the API reference, as well as in
+Rodriguez-Gomez et al. (in prep.). We also refer the user to the
+`tutorial <http://nbviewer.jupyter.org/github/vrodgom/statmorph/blob/master/notebooks/tutorial.ipynb>`_,
+which contains a more concrete (albeit simplified) usage example.
 
 Input
 -----
