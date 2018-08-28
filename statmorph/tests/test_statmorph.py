@@ -39,7 +39,7 @@ correct_values = {
     'multimode':0.23423423423423,
     'intensity':0.51203949030140,
     'deviation':0.01522525597953,
-    'outer_asymmetry':-0.02429796457966,
+    'outer_asymmetry':-0.01939061100961,
     'shape_asymmetry':0.16270478667804,
     'sersic_amplitude':1296.95301375643112,
     'sersic_rhalf':22.45788881197571,

@@ -2254,29 +2254,13 @@ class SourceMorphology(object):
         return rmax_ellip
 
     @lazyproperty
-    def _outer_asymmetry_center(self):
-        """
-        Find the position of the central pixel (relative to the
-        "postage stamp" cutout) that minimizes the outer asymmetry.
-        """
-        image = self._cutout_stamp_maskzeroed
-        
-        # Initial guess
-        center_0 = self._asymmetry_center
-        
-        center_asym = opt.fmin(self._asymmetry_function, center_0,
-                               args=(image, 'outer'), xtol=1e-6, disp=0)
-
-        return center_asym
-
-    @lazyproperty
     def outer_asymmetry(self):
         """
-        Calculate outer asymmetry as described in Pawlik et al. (2016).
+        Calculate outer asymmetry as described in Wen et al. (2014).
+        Note that the center is the one used for the standard asymmetry.
         """
         image = self._cutout_stamp_maskzeroed
-        asym = self._asymmetry_function(self._outer_asymmetry_center,
-                                        image, 'outer')
+        asym = self._asymmetry_function(self._asymmetry_center, image, 'outer')
         
         return asym
 
@@ -2287,8 +2271,7 @@ class SourceMorphology(object):
         Note that the center is the one used for the standard asymmetry.
         """
         image = np.where(self._segmap_shape_asym, 1.0, 0.0)
-        asym = self._asymmetry_function(self._asymmetry_center,
-                                        image, 'shape')
+        asym = self._asymmetry_function(self._asymmetry_center, image, 'shape')
 
         return asym
 
