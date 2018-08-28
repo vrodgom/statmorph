@@ -37,5 +37,5 @@ setup(
     install_requires=['scipy>=0.19',
                       'scikit-image>=0.14',
                       'astropy>=2.0',
-                      'photutils>=0.3'],
+                      'photutils>=0.5'],
 )
