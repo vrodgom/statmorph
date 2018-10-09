@@ -18,7 +18,7 @@ morphological statistics for each source:
 
 For more information, please see:
 
-- Rodriguez-Gomez et al. (in prep.)
+- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_.
 
 The current Python implementation is largely based on IDL and Python code
 originally written by Jennifer Lotz and Greg Snyder.
@@ -29,7 +29,7 @@ originally written by Jennifer Lotz and Greg Snyder.
 
 **Authors**
 
-- Vicente Rodriguez-Gomez (vrg [at] jhu.edu)
+- Vicente Rodriguez-Gomez (v.rodriguez [at] irya.unam.mx)
 - Jennifer Lotz
 - Greg Snyder
 
@@ -43,7 +43,7 @@ originally written by Jennifer Lotz and Greg Snyder.
 If you use this code for a scientific publication, please cite the following
 article:
 
-- Rodriguez-Gomez et al. (in prep.)
+- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_.
 
 In addition, the Python package can also be cited using its Zenodo record:
 
