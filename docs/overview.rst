@@ -18,14 +18,10 @@ morphological statistics for each source:
 
 For more information, please see:
 
-- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_.
+- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_
 
 The current Python implementation is largely based on IDL and Python code
 originally written by Jennifer Lotz and Greg Snyder.
-
-.. ~  The main scientific reference is
-.. ~ `Lotz et al. (2004) <http://adsabs.harvard.edu/abs/2004AJ....128..163L>`_,
-.. ~ but a more complete list can be found in the *Citing* section.
 
 **Authors**
 
@@ -43,7 +39,7 @@ originally written by Jennifer Lotz and Greg Snyder.
 If you use this code for a scientific publication, please cite the following
 article:
 
-- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_.
+- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_
 
 In addition, the Python package can also be cited using its Zenodo record:
 

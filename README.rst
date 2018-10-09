@@ -22,7 +22,7 @@ Citing
 If you use this code for a scientific publication, please cite the following
 article:
 
-- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_.
+- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_
 
 In addition, the Python package can also be cited using its Zenodo record:
 
