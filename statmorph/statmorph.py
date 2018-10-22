@@ -2310,7 +2310,7 @@ class SourceMorphology(object):
 
         # Prepare data for fitting
         z = image.copy()
-        y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
+        y, x = np.mgrid[0:ny, 0:nx]
         weightmap = self._weightmap_stamp
         # Exclude pixels with image == 0 or weightmap == 0 from the fit.
         fit_weights = np.zeros_like(z)

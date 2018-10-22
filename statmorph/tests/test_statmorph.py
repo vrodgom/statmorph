@@ -1,7 +1,7 @@
 """
 Tests for the statmorph morphology code. Based on the tutorial example.
 """
-# Author: Vicente Rodriguez-Gomez <vrg@jhu.edu>
+# Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
 # Licensed under a 3-Clause BSD License.
 from __future__ import absolute_import, division, print_function
 
@@ -18,7 +18,7 @@ correct_values = {
     'yc_centroid':81.03461797343211,
     'ellipticity_centroid':0.04855709579576,
     'elongation_centroid':1.05103521775316,
-    'orientation_centroid':-0.85797602066195,
+    'orientation_centroid':-0.85797602066194,
     'xc_asymmetry':82.23816149429084,
     'yc_asymmetry':80.76122537398356,
     'ellipticity_asymmetry':0.04862719043001,
@@ -41,13 +41,13 @@ correct_values = {
     'deviation':0.01522525597953,
     'outer_asymmetry':-0.01939061100961,
     'shape_asymmetry':0.16270478667804,
-    'sersic_amplitude':1296.95301375643112,
-    'sersic_rhalf':22.45788881197571,
-    'sersic_n':0.61206811649601,
-    'sersic_xc':82.06197530371749,
-    'sersic_yc':80.90465047895617,
-    'sersic_ellip':0.05083868323162,
-    'sersic_theta':2.47831539294638,
+    'sersic_amplitude':1296.95288046788846,
+    'sersic_rhalf':22.45788867007650,
+    'sersic_n':0.61206828330366,
+    'sersic_xc':81.56197595105462,
+    'sersic_yc':80.40465135535705,
+    'sersic_ellip':0.05083866177840,
+    'sersic_theta':2.47831543421010,
     'sky_mean':3.48760604858398,
     'sky_median':-2.68543863296509,
     'sky_sigma':150.91754150390625,
