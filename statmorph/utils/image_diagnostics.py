@@ -158,8 +158,8 @@ def make_figure(morph):
     a = morph.sersic_rhalf
     b = a * (1.0 - morph.sersic_ellip)
     xprime, yprime = a*np.cos(theta_vec), b*np.sin(theta_vec)
-    x = xc + (xprime*np.cos(theta) - yprime*np.sin(theta))
-    y = yc + (xprime*np.sin(theta) + yprime*np.cos(theta))
+    x = xcs + (xprime*np.cos(theta) - yprime*np.sin(theta))
+    y = ycs + (xprime*np.sin(theta) + yprime*np.cos(theta))
     ax.plot(x, y, 'r', label='Half-Light Ellipse (Sérsic)')
     # Some text
     text = ('flag_sersic = %d' % (morph.flag_sersic) + '\n' +
