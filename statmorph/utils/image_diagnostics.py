@@ -91,7 +91,11 @@ def make_figure(morph):
     M = np.max(image)
     m_stretch, M_stretch = log_stretch([m, M])
     xc, yc = morph._xc_stamp, morph._yc_stamp  # centroid
-    xca, yca = morph._asymmetry_center  # asym. centroid
+    xca, yca = morph._asymmetry_center  # asym. center
+    xcs, ycs = morph._sersic_model.x_0.value, morph._sersic_model.y_0.value  # Sersic center
+
+    # Plot everything w.r.t. centers of pixels (instead of lower-left corners):
+    xc += 0.5; yc += 0.5; xca += 0.5; yca += 0.5; xcs += 0.5; ycs += 0.5
 
     ##################
     # Original image #
@@ -144,10 +148,8 @@ def make_figure(morph):
     # Add background noise (for realism)
     if morph.sky_sigma > 0:
         sersic_model += np.random.normal(scale=morph.sky_sigma, size=(ny, nx))
-    ax.imshow(log_stretch(normalize(sersic_model, m=m, M=M)), cmap='gray', origin='lower',
-              vmin=m_stretch, vmax=M_stretch)
-    # Sersic center (within postage stamp)
-    xcs, ycs = morph._sersic_model.x_0.value, morph._sersic_model.y_0.value
+    ax.imshow(log_stretch(normalize(sersic_model, m=m, M=M)), cmap='gray',
+              origin='lower', vmin=m_stretch, vmax=M_stretch)
     ax.plot(xcs, ycs, 'ro', markersize=5, label='Sérsic Center')
     R = float(nx**2 + ny**2)
     theta = morph.sersic_theta
@@ -196,11 +198,12 @@ def make_figure(morph):
     ######################
     ax = get_ax(fig, 0, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     # Rotate image around asym. center
-    image_180 = skimage.transform.rotate(image, 180.0, center=(xca, yca))
+    # (note that skimage expects pixel positions at lower-left corners)
+    image_180 = skimage.transform.rotate(image, 180.0, center=(xca-0.5, yca-0.5))
     image_res = image - image_180
     # Apply symmetric mask
     mask = morph._mask_stamp.copy()
-    mask_180 = skimage.transform.rotate(mask, 180.0, center=(xca, yca))
+    mask_180 = skimage.transform.rotate(mask, 180.0, center=(xca-0.5, yca-0.5))
     mask_180 = mask_180 >= 0.5  # convert back to bool
     mask_symmetric = mask | mask_180
     image_res = np.where(~mask_symmetric, image_res, 0.0)
@@ -295,9 +298,11 @@ def make_figure(morph):
               norm=matplotlib.colors.NoNorm())
     sorted_flux_sums, sorted_xpeak, sorted_ypeak = morph._intensity_sums
     if len(sorted_flux_sums) > 0:
-        ax.plot(sorted_xpeak[0] + 0.5, sorted_ypeak[0] + 0.5, 'bo', markersize=2, label='First Peak')
+        ax.plot(sorted_xpeak[0] + 0.5, sorted_ypeak[0] + 0.5, 'bo', markersize=2,
+                label='First Peak')
     if len(sorted_flux_sums) > 1:
-        ax.plot(sorted_xpeak[1] + 0.5, sorted_ypeak[1] + 0.5, 'ro', markersize=2, label='Second Peak')
+        ax.plot(sorted_xpeak[1] + 0.5, sorted_ypeak[1] + 0.5, 'ro', markersize=2,
+                label='Second Peak')
     # Some text
     text = (r'$M = %.4f$' % (morph.multimode) + '\n' +
             r'$I = %.4f$' % (morph.intensity) + '\n' +
@@ -320,13 +325,14 @@ def make_figure(morph):
     ax.imshow(morph._segmap_shape_asym, cmap='gray', origin='lower')
     ax.plot(xca, yca, 'bo', markersize=5, label='Asym. Center')
     r = morph.rpetro_circ
-    ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'b', label=r'$r_{\rm petro, circ}$')
+    ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'b',
+            label=r'$r_{\rm petro, circ}$')
     r = morph.rpetro_ellip
-    ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'r', label=r'$r_{\rm petro, ellip}$')
+    ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'r',
+            label=r'$r_{\rm petro, ellip}$')
     r = morph.rmax_circ
-    ax.plot(np.floor(xca) + r*np.cos(theta_vec), np.floor(yca) + r*np.sin(theta_vec), 'c', lw=1.5, label=r'$r_{\rm max}$')
-    # ~ r = morph._petro_extent_flux * morph.rpetro_ellip
-    # ~ ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'r--', label='%g*rpet_ellip' % (morph._petro_extent_flux))
+    ax.plot(np.floor(xca) + r*np.cos(theta_vec), np.floor(yca) + r*np.sin(theta_vec),
+            'c', lw=1.5, label=r'$r_{\rm max}$')
     text = (r'$A_S = %.4f$' % (morph.shape_asymmetry))
     ax.text(0.034, 0.034, text, fontsize=12,
         horizontalalignment='left', verticalalignment='bottom',
@@ -339,8 +345,8 @@ def make_figure(morph):
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
-    # defaults: left = 0.125, right = 0.9, bottom = 0.1, top = 0.9, wspace = 0.2, hspace = 0.2
-    fig.subplots_adjust(left=eps/wfig, right=1-eps/wfig, bottom=eps/hfig, top=1.0-htop/hfig, wspace=eps/wfig, hspace=htop/hfig)
+    fig.subplots_adjust(left=eps/wfig, right=1-eps/wfig, bottom=eps/hfig,
+                        top=1.0-htop/hfig, wspace=eps/wfig, hspace=htop/hfig)
 
     #fig.savefig('test_segmap.png', dpi=150)
     

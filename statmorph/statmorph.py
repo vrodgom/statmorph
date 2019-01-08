@@ -575,7 +575,6 @@ class SourceMorphology(object):
         assert M[0, 0] > 0  # already checked by constructor
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
-        yc += 0.5; xc += 0.5  # shift pixel positions
 
         return np.array([xc, yc])
 
@@ -602,8 +601,8 @@ class SourceMorphology(object):
         image = np.float64(self._cutout_stamp_maskzeroed_no_bg)
 
         # Calculate moments w.r.t. given center
-        xc = xc - self.xmin_stamp - 0.5  # w.r.t. lower-left corner of pixels
-        yc = yc - self.ymin_stamp - 0.5
+        xc = xc - self.xmin_stamp
+        yc = yc - self.ymin_stamp
         Mc = skimage.measure.moments_central(image, center=(yc, xc), order=2)
         assert Mc[0, 0] > 0
 
@@ -1249,8 +1248,6 @@ class SourceMorphology(object):
             return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
-        # Note that we do not shift (yc, xc) by 0.5 pixels here, since
-        # (yc, xc) is only used as input for other skimage functions.
 
         # Calculate second total central moment
         Mc = skimage.measure.moments_central(image, center=(yc, xc), order=2)
@@ -2049,8 +2046,8 @@ class SourceMorphology(object):
             self.flag = 1
             return -99.0  # invalid
 
-        xp = sorted_xpeak[0] + 0.5  # center of pixel
-        yp = sorted_ypeak[0] + 0.5
+        xp = sorted_xpeak[0]
+        yp = sorted_ypeak[0]
         
         # Calculate centroid
         M = skimage.measure.moments(image, order=1)
@@ -2061,7 +2058,6 @@ class SourceMorphology(object):
             return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
-        yc += 0.5; xc += 0.5  # shift pixel positions
 
         area = np.sum(self._segmap_mid)
         D = np.sqrt(np.pi/area) * np.sqrt((xp-xc)**2 + (yp-yc)**2)
@@ -2211,7 +2207,7 @@ class SourceMorphology(object):
         xc, yc = self._asymmetry_center
 
         # Distances from all pixels to the center
-        ypos, xpos = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
+        ypos, xpos = np.mgrid[0:ny, 0:nx]
         distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
         
         # Only consider pixels within the segmap.
@@ -2238,7 +2234,7 @@ class SourceMorphology(object):
         xc, yc = self._asymmetry_center
 
         theta = self.orientation_asymmetry
-        y, x = np.mgrid[0:ny, 0:nx] + 0.5  # center of pixel
+        y, x = np.mgrid[0:ny, 0:nx]
 
         xprime = (x-xc)*np.cos(theta) + (y-yc)*np.sin(theta)
         yprime = -(x-xc)*np.sin(theta) + (y-yc)*np.cos(theta)
