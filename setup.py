@@ -11,12 +11,12 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 setup(
     name='statmorph',
-    version='0.3.2',
+    version='0.3.3',
     description='Non-parametric morphological diagnostics of galaxy images',
     long_description=long_description,
     url='https://github.com/vrodgom/statmorph',
     author='Vicente Rodriguez-Gomez',
-    author_email='vrg@jhu.edu',
+    author_email='v.rodriguez@irya.unam.mx',
     license='BSD',
     classifiers=[
         'Development Status :: 4 - Beta',

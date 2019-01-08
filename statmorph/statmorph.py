@@ -25,7 +25,7 @@ import photutils
 __all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
            '__version__']
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 def _quantile(sorted_values, q):
     """
@@ -1287,7 +1287,7 @@ class SourceMorphology(object):
     def gini_m20_bulge(self):
         """
         Return the Gini-M20 bulge statistic, F(G, M20), as defined
-        in Rodriguez-Gomez et al. (2018).
+        in Rodriguez-Gomez et al. (2019).
         """
         if (self.gini == -99.0) or (self.m20 == -99.0):
             return -99.0  # invalid
@@ -1298,7 +1298,7 @@ class SourceMorphology(object):
     def gini_m20_merger(self):
         """
         Return the Gini-M20 merger statistic, S(G, M20), as defined
-        in Rodriguez-Gomez et al. (2018).
+        in Rodriguez-Gomez et al. (2019).
         """
         if (self.gini == -99.0) or (self.m20 == -99.0):
             return -99.0  # invalid
@@ -2172,7 +2172,7 @@ class SourceMorphology(object):
         # Do sigma-clipping until convergence
         mean, median, std = sigma_clipped_stats(
             self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0,
-            iters=None, cenfunc=_mode)
+            maxiters=None, cenfunc=_mode)
 
         # Mode as defined in Bertin & Arnouts (1996)
         mode = 2.5*median - 1.5*mean

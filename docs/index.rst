@@ -16,11 +16,6 @@ statmorph
 diagnostics of galaxy images (e.g., Gini-:math:`M_{20}` and CAS statistics),
 as well as fitting 2D Sérsic profiles.
 
-.. ~ The main reference of this implementation is
-.. ~ `Lotz et al. (2004) <http://adsabs.harvard.edu/abs/2004AJ....128..163L>`_,
-.. ~ but a more complete list can be found in the
-.. ~ `README <https://github.com/vrodgom/statmorph/blob/master/README.rst>`_.
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
@@ -37,7 +32,7 @@ Citing
 If you use this code for a scientific publication, please cite the following
 article:
 
-- `Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_
+- `Rodriguez-Gomez et al. (2019) <http://adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
 
 
 Indices and tables

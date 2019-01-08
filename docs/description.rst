@@ -8,7 +8,8 @@ Below we briefly describe the input and output of this function.
 
 A more detailed description of the input parameters and the measurements
 performed by statmorph can be found in the API reference, as well as in
-`Rodriguez-Gomez et al. (2018) <https://arxiv.org/abs/1809.08239>`_. We also refer the user to the
+`Rodriguez-Gomez et al. (2019) <http://adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_.
+We also refer the user to the
 `tutorial <http://nbviewer.jupyter.org/github/vrodgom/statmorph/blob/master/notebooks/tutorial.ipynb>`_,
 which contains a more concrete (albeit simplified) usage example.
 
@@ -44,8 +45,8 @@ Optionally, the function can also accept:
 In addition, almost all of the parameters used in the calculation of the
 morphological diagnostics can be specified by the user as keyword
 arguments, although it is recommended to leave the default values alone.
-For a complete list of keyword arguments, see the docstring of the
-`SourceMorphology` class.
+For a complete list of keyword arguments, please see the
+`API Reference <api.html>`_.
 
 Output
 ------

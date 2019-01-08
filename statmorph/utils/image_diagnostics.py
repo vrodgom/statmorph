@@ -45,7 +45,7 @@ def get_ax(fig, row, col, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig):
 
 def make_figure(morph):
     """
-    Creates a figure analogous to Fig. 4 from Rodriguez-Gomez et al. (2018)
+    Creates a figure analogous to Fig. 4 from Rodriguez-Gomez et al. (2019)
     for a given ``SourceMorphology`` object.
     
     Parameters
