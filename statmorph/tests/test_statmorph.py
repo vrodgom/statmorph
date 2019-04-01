@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import os
 import time
+import pytest
 import statmorph
 from astropy.io import fits
 
@@ -53,7 +54,7 @@ correct_values = {
     'sky_sigma':150.91754150390625,
 }
 
-def test1():
+def test_morph():
     """
     Check values for a randomly chosen galaxy.
     """
@@ -84,6 +85,6 @@ def runall():
     """
     start = time.time()
     print('Running statmorph tests...')
-    test1()
+    test_morph()
     print('Time: %g s.' % (time.time() - start))
     print('All tests finished successfully.')
