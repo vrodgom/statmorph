@@ -391,7 +391,7 @@ class SourceMorphology(object):
             self._segmap = photutils.SegmentationImage(self._segmap)
 
         # Check sanity of input data
-        if float(photutils.__version__) < 0.5:
+        if photutils.__version__ < '0.5':
             self._segmap.check_label(self.label)
         else:
             self._segmap.check_labels([self.label])
