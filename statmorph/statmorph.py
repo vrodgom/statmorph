@@ -6,6 +6,7 @@ of galaxy images.
 # Licensed under a 3-Clause BSD License.
 from __future__ import absolute_import, division, print_function
 
+from pkg_resources import parse_version
 import warnings
 import time
 import numpy as np
@@ -62,12 +63,12 @@ def _local_variance(image):
         [1, 0, 1],
         [1, 1, 1]], dtype=np.float64)
     w = w / np.sum(w)
-    
+
     # Use the fact that var(x) = <x^2> - <x>^2.
     local_mean = ndi.convolve(image, w)
     local_mean2 = ndi.convolve(image**2, w)
     local_var = local_mean2 - local_mean**2
-    
+
     return local_var
 
 def _aperture_area(ap, mask, **kwargs):
@@ -86,7 +87,7 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     This avoids problems when the aperture is larger than the
     region of interest.
     """
-    if photutils.__version__ < '0.7':
+    if parse_version(photutils.__version__) <= parse_version('0.6'):
         return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
     else:
         return ap.do_photometry(image, **kwargs)[0][0] / ap.area
@@ -164,7 +165,7 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         cur_fraction = ap_sum / total_sum
-    
+
     return cur_fraction - fraction
 
 def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
@@ -256,7 +257,7 @@ class SourceMorphology(object):
         A 2D image containing the sources of interest.
         The image must already be background-subtracted.
     segmap : array-like (int) or ``photutils.SegmentationImage``
-        A 2D segmentation map where different sources are 
+        A 2D segmentation map where different sources are
         labeled with different positive integer values.
         A value of zero is reserved for the background.
         It is assumed that the sum of pixel values within each
@@ -394,7 +395,7 @@ class SourceMorphology(object):
             self._segmap = photutils.SegmentationImage(self._segmap)
 
         # Check sanity of input data
-        if photutils.__version__ < '0.5':
+        if parse_version(photutils.__version__) < parse_version('0.5'):
             self._segmap.check_label(self.label)
         else:
             self._segmap.check_labels([self.label])
@@ -473,7 +474,7 @@ class SourceMorphology(object):
             [1, 0, 1],
             [1, 1, 1]], dtype=np.float64)
         w = w / np.sum(w)
-        
+
         # Use the fact that var(x) = <x^2> - <x>^2.
         local_mean = ndi.convolve(image, w)
         local_mean2 = ndi.convolve(image**2, w)
@@ -482,7 +483,7 @@ class SourceMorphology(object):
         # Get "bad pixels"
         badpixels = (np.abs(image - local_mean) >
                       self._n_sigma_outlier * local_std)
-        
+
         return badpixels
 
     def _calculate_morphology(self):
@@ -678,10 +679,10 @@ class SourceMorphology(object):
         The orientation (in radians) of the source.
         """
         x2, xy, xy, y2 = covariance.flat
-        
+
         # SExtractor manual, eq. (21):
         theta = 0.5 * np.arctan2(2.0 * xy, x2 - y2)
-        
+
         return theta
 
     @lazyproperty
@@ -846,7 +847,7 @@ class SourceMorphology(object):
         by ``_slice_stamp``. Pixels belonging to other sources
         (as well as pixels where ``mask`` == 1) are set to zero,
         but the background is left alone.
-        
+
         In addition, NaN or inf values are removed at this point,
         as well as badpixels (outliers).
         """
@@ -920,7 +921,7 @@ class SourceMorphology(object):
     def _petrosian_function_circ(self, r, center):
         """
         Helper function to calculate the circular Petrosian radius.
-        
+
         For a given radius ``r``, return the ratio of the mean flux
         over a circular annulus divided by the mean flux within the
         circle, minus "eta" (eq. 4 from Lotz et al. 2004). The root
@@ -939,7 +940,7 @@ class SourceMorphology(object):
             circ_annulus, image, method='exact'))
         circ_aperture_mean_flux = np.abs(_aperture_mean_nomask(
             circ_aperture, image, method='exact'))
-        
+
         if circ_aperture_mean_flux == 0:
             warnings.warn('[rpetro_circ] Mean flux is zero.', AstropyUserWarning)
             ratio = 1.0
@@ -994,7 +995,7 @@ class SourceMorphology(object):
                     break
             r += dr
 
-        rpetro_circ = opt.brentq(self._petrosian_function_circ, 
+        rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, args=(center,), xtol=1e-6)
 
         return rpetro_circ
@@ -1034,13 +1035,13 @@ class SourceMorphology(object):
     def _petrosian_function_ellip(self, a, center, elongation, theta):
         """
         Helper function to calculate the Petrosian "radius".
-        
+
         For the ellipse with semi-major axis ``a``, return the
         ratio of the mean flux over an elliptical annulus
         divided by the mean flux within the ellipse,
         minus "eta" (eq. 4 from Lotz et al. 2004). The root of
         this function is the Petrosian "radius".
-        
+
         """
         image = self._cutout_stamp_maskzeroed
 
@@ -1074,7 +1075,7 @@ class SourceMorphology(object):
         """
         Compute the Petrosian "radius" (actually the semi-major axis)
         for concentric elliptical apertures.
-        
+
         Notes
         -----
         The so-called "curve of growth" is not always monotonic,
@@ -1176,7 +1177,7 @@ class SourceMorphology(object):
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
         labeled_array, num_features = ndi.label(above_threshold, structure=s)
-        
+
         # In some rare cases (e.g., Pan-STARRS J020218.5+672123_g.fits.gz),
         # this results in an empty segmap, so there is nothing to do.
         if num_features == 0:
@@ -1223,7 +1224,7 @@ class SourceMorphology(object):
 
             self.flag = 1
             return -99.0  # invalid
-        
+
         indices = np.arange(1, n+1)  # start at i=1
         gini = (np.sum((2*indices-n-1) * sorted_pixelvals) /
                 (float(n-1) * np.sum(sorted_pixelvals)))
@@ -1336,7 +1337,7 @@ class SourceMorphology(object):
     def _slice_skybox(self):
         """
         Try to find a region of the sky that only contains background.
-        
+
         In principle, a more accurate approach is possible
         (e.g. Shi et al. 2009, ApJ, 697, 1764).
         """
@@ -1345,7 +1346,7 @@ class SourceMorphology(object):
         mask = np.zeros(segmap.shape, dtype=np.bool8)
         if self._mask is not None:
             mask = self._mask[self._slice_stamp]
-        
+
         cur_skybox_size = self._skybox_size
         while True:
             for i in range(0, ny - cur_skybox_size):
@@ -1444,7 +1445,7 @@ class SourceMorphology(object):
         """
         Helper function to determine the asymmetry and center of asymmetry.
         The idea is to minimize the output of this function.
-        
+
         Parameters
         ----------
         center : tuple or array-like
@@ -1454,7 +1455,7 @@ class SourceMorphology(object):
         kind : {'cas', 'outer', 'shape'}
             Whether to calculate the traditional CAS asymmetry (default),
             outer asymmetry or shape asymmetry.
-        
+
         Returns
         -------
         asym : The asymmetry statistic for the given center.
@@ -1527,7 +1528,7 @@ class SourceMorphology(object):
             else:
                 ap_area = _aperture_area(ap, mask_symmetric)
                 asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
-                
+
         return asym
 
     @lazyproperty
@@ -1624,7 +1625,7 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._asymmetry_center,
                                         image, 'cas')
-        
+
         return asym
 
     def _radius_at_fraction_of_total_cas(self, fraction):
@@ -1635,16 +1636,16 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         center = self._asymmetry_center
         r_upper = self._petro_extent_cas * self.rpetro_circ
-        
+
         r, flag = _radius_at_fraction_of_total_circ(image, center, r_upper, fraction)
         self.flag = max(self.flag, flag)
-        
+
         if np.isnan(r) or (r <= 0.0):
             warnings.warn('[CAS] Invalid radius_at_fraction_of_total.',
                           AstropyUserWarning)
             self.flag = 1
             r = -99.0  # invalid
-        
+
         return r
 
     @lazyproperty
@@ -1680,7 +1681,7 @@ class SourceMorphology(object):
             C = -99.0  # invalid
         else:
             C = 5.0 * np.log10(self.r80 / self.r20)
-        
+
         return C
 
     @lazyproperty
@@ -1698,7 +1699,7 @@ class SourceMorphology(object):
 
         boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         image_smooth = ndi.uniform_filter(image, size=boxcar_size)
-        
+
         image_diff = image - image_smooth
         image_diff[image_diff < 0] = 0.0  # set negative pixels to zero
 
@@ -1714,7 +1715,7 @@ class SourceMorphology(object):
         if self._sky_smoothness == -99.0:  # invalid skybox
             S = ap_diff / ap_flux
         else:
-            if photutils.__version__ < '0.7':
+            if parse_version(photutils.__version__) <= parse_version('0.6'):
                 S = (ap_diff - ap.area()*self._sky_smoothness) / ap_flux
             else:
                 S = (ap_diff - ap.area*self._sky_smoothness) / ap_flux
@@ -1756,13 +1757,13 @@ class SourceMorphology(object):
     def _segmap_mid_function(self, q):
         """
         Helper function to calculate the MID segmap.
-        
+
         For a given quantile ``q``, return the ratio of the mean flux of
         pixels at the level of ``q`` (within the main clump) divided by
         the mean of pixels above ``q`` (within the main clump).
         """
         locs_main_clump = self._segmap_mid_main_clump(q)
-        
+
         mean_flux_main_clump = np.mean(
             self._cutout_stamp_maskzeroed_no_bg_nonnegative[locs_main_clump])
         mean_flux_new_pixels = _quantile(
@@ -1782,7 +1783,7 @@ class SourceMorphology(object):
         """
         Create a new segmentation map as described in Section 4.3 from
         Freeman et al. (2013).
-        
+
         Notes
         -----
         This implementation improves upon previous ones by making
@@ -1790,7 +1791,7 @@ class SourceMorphology(object):
         used in the calculation, as well as other parameters.
         """
         num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
-        
+
         # In some rare cases (as a consequence of an erroneous
         # initial segmap, as in J095553.0+694048_g.fits.gz),
         # the MID segmap is technically undefined because the
@@ -1802,7 +1803,7 @@ class SourceMorphology(object):
             warnings.warn('segmap_mid is undefined; using segmap_gini instead.',
                           AstropyUserWarning)
             return self._segmap_gini
-        
+
         # Find appropriate quantile using numerical solver
         q_min = 0.0
         q_max = 1.0
@@ -1891,7 +1892,7 @@ class SourceMorphology(object):
         """
         Calculate the multimode (M) statistic as described in
         Freeman et al. (2013) and Peth et al. (2016).
-        
+
         Notes
         -----
         In the original publication, Freeman et al. (2013)
@@ -1903,14 +1904,14 @@ class SourceMorphology(object):
         quantity (A2/A1)*A2 (as a function of the brightness
         threshold) but ultimately define the M statistic
         as the corresponding A2/A1 value.
-        
+
         The original IDL implementation only explores quantiles
         in the range [0.5, 1.0], at least with the default settings.
         While this might be useful in practice, in theory the
         maximum (A2/A1)*A2 value could also happen in the quantile
         range [0.0, 0.5], so here we take a safer, more general
         approach and search over [0.0, 1.0].
-        
+
         In practice, the quantity (A2/A1)*A2 is tricky to optimize.
         We improve over previous implementations by doing so
         in two stages: starting with a brute-force search
@@ -1918,7 +1919,7 @@ class SourceMorphology(object):
         original implementation, followed by a finer search using
         the basin-hopping method. This should do a better job of
         finding the global maximum.
-        
+
         """
         q_min = 0.0
         q_max = 1.0
@@ -2012,7 +2013,7 @@ class SourceMorphology(object):
         """
         labeled_array, peak_labels, xpeak, ypeak = self._watershed_mid
         num_peaks = len(peak_labels)
-        
+
         flux_sums = np.zeros(num_peaks, dtype=np.float64)
         for k, label in enumerate(peak_labels):
             locs = labeled_array == label
@@ -2021,7 +2022,7 @@ class SourceMorphology(object):
         sorted_flux_sums = flux_sums[sid]
         sorted_xpeak = xpeak[sid]
         sorted_ypeak = ypeak[sid]
-        
+
         return sorted_flux_sums, sorted_xpeak, sorted_ypeak
 
     @lazyproperty
@@ -2045,7 +2046,7 @@ class SourceMorphology(object):
         Peth et al. (2016).
         """
         image = np.float64(self._cutout_mid)  # skimage wants double
-        
+
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
         if len(sorted_flux_sums) == 0:
             warnings.warn('[deviation] There are no peaks.', AstropyUserWarning)
@@ -2054,7 +2055,7 @@ class SourceMorphology(object):
 
         xp = sorted_xpeak[0]
         yp = sorted_ypeak[0]
-        
+
         # Calculate centroid
         M = skimage.measure.moments(image, order=1)
         if M[0, 0] <= 0:
@@ -2095,7 +2096,7 @@ class SourceMorphology(object):
             r, flag = _radius_at_fraction_of_total_circ(
                 image, center, self.rmax_circ, 0.5)
             self.flag = max(self.flag, flag)
-        
+
         # In theory, this return value can also be NaN
         return r
 
@@ -2116,7 +2117,7 @@ class SourceMorphology(object):
                 image, center, self.elongation_asymmetry,
                 self.orientation_asymmetry, self.rmax_ellip, 0.5)
             self.flag = max(self.flag, flag)
-        
+
         # In theory, this return value can also be NaN
         return r
 
@@ -2125,7 +2126,7 @@ class SourceMorphology(object):
         """
         Construct a binary detection mask as described in Section 3.1
         from Pawlik et al. (2016).
-        
+
         Notes
         -----
         The original algorithm assumes that a circular aperture with
@@ -2151,10 +2152,11 @@ class SourceMorphology(object):
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
-        if photutils.__version__ < '0.7':
+        if parse_version(photutils.__version__) <= parse_version('0.6'):
             circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
         else:
             circ_annulus_mask = circ_annulus.to_mask(method='center')
+
         # With the same shape as the postage stamp
         circ_annulus_mask = circ_annulus_mask.to_image((ny, nx))
         # Invert mask and exclude other sources
@@ -2206,7 +2208,7 @@ class SourceMorphology(object):
     def rmax_circ(self):
         """
         Return the distance (in pixels) from the pixel that minimizes
-        the asymmetry to the edge of the main source segment, similar 
+        the asymmetry to the edge of the main source segment, similar
         to Pawlik et al. (2016).
         """
         image = self._cutout_stamp_maskzeroed
@@ -2218,14 +2220,14 @@ class SourceMorphology(object):
         # Distances from all pixels to the center
         ypos, xpos = np.mgrid[0:ny, 0:nx]
         distances = np.sqrt((ypos-yc)**2 + (xpos-xc)**2)
-        
+
         # Only consider pixels within the segmap.
         rmax_circ = np.max(distances[self._segmap_shape_asym])
-        
+
         if rmax_circ == 0:
             warnings.warn('[rmax_circ] rmax_circ = 0!', AstropyUserWarning)
             self.flag = 1
-        
+
         return rmax_circ
 
     @lazyproperty
@@ -2251,11 +2253,11 @@ class SourceMorphology(object):
 
         # Only consider pixels within the segmap.
         rmax_ellip = np.max(r_ellip[self._segmap_shape_asym])
-        
+
         if rmax_ellip == 0:
             warnings.warn('[rmax_ellip] rmax_ellip = 0!', AstropyUserWarning)
             self.flag = 1
-        
+
         return rmax_ellip
 
     @lazyproperty
@@ -2266,7 +2268,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._asymmetry_center, image, 'outer')
-        
+
         return asym
 
     @lazyproperty
@@ -2431,14 +2433,14 @@ def source_morphology(image, segmap, **kwargs):
     """
     Calculate the morphological parameters of all sources in ``image``
     as labeled by ``segmap``.
-    
+
     Parameters
     ----------
     image : array-like
         A 2D image containing the sources of interest.
         The image must already be background-subtracted.
     segmap : array-like (int) or `photutils.SegmentationImage`
-        A 2D segmentation map where different sources are 
+        A 2D segmentation map where different sources are
         labeled with different positive integer values.
         A value of zero is reserved for the background.
 
@@ -2456,11 +2458,11 @@ def source_morphology(image, segmap, **kwargs):
     See Also
     --------
     `SourceMorphology` : Class to measure morphological parameters.
-    
+
     Examples
     --------
     See `README.rst` for usage examples.
-    
+
     References
     ----------
     See `README.rst` for a list of references.
