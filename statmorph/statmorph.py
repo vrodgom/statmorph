@@ -86,7 +86,10 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     This avoids problems when the aperture is larger than the
     region of interest.
     """
-    return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
+    if photutils.__version__ < '0.7':
+        return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
+    else:
+        return ap.do_photometry(image, **kwargs)[0][0] / ap.area
 
 def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
@@ -1711,7 +1714,10 @@ class SourceMorphology(object):
         if self._sky_smoothness == -99.0:  # invalid skybox
             S = ap_diff / ap_flux
         else:
-            S = (ap_diff - ap.area()*self._sky_smoothness) / ap_flux
+            if photutils.__version__ < '0.7':
+                S = (ap_diff - ap.area()*self._sky_smoothness) / ap_flux
+            else:
+                S = (ap_diff - ap.area*self._sky_smoothness) / ap_flux
 
         if not np.isfinite(S):
             warnings.warn('Invalid smoothness.', AstropyUserWarning)
@@ -2145,7 +2151,10 @@ class SourceMorphology(object):
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
-        circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
+        if photutils.__version__ < '0.7':
+            circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
+        else:
+            circ_annulus_mask = circ_annulus.to_mask(method='center')
         # With the same shape as the postage stamp
         circ_annulus_mask = circ_annulus_mask.to_image((ny, nx))
         # Invert mask and exclude other sources
