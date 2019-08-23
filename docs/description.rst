@@ -8,7 +8,7 @@ Below we briefly describe the input and output of this function.
 
 A more detailed description of the input parameters and the measurements
 performed by statmorph can be found in the API reference, as well as in
-`Rodriguez-Gomez et al. (2019) <http://adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_.
+`Rodriguez-Gomez et al. (2019) <https://ui.adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_.
 We also refer the user to the
 `tutorial <http://nbviewer.jupyter.org/github/vrodgom/statmorph/blob/master/notebooks/tutorial.ipynb>`_,
 which contains a more concrete (albeit simplified) usage example.
@@ -72,4 +72,4 @@ In addition to the flags described above, the output should
 not be trusted when any of the measured distance scales (Petrosian radii,
 half-light radii, etc.) is smaller than the radius at half-maximum of the PSF,
 or when the signal-to-noise per pixel (``sn_per_pixel``) is lower than 2.5
-(`Lotz et al. 2006 <http://adsabs.harvard.edu/abs/2006ApJ...636..592L>`_).
+(`Lotz et al. 2006 <https://ui.adsabs.harvard.edu/abs/2006ApJ...636..592L>`_).

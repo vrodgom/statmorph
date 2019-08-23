@@ -18,7 +18,7 @@ morphological statistics for each source:
 
 .. ~ For more information, please see:
 
-.. ~ - `Rodriguez-Gomez et al. (2019) <http://adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
+.. ~ - `Rodriguez-Gomez et al. (2019) <https://ui.adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
 
 The current Python implementation is largely based on IDL and Python code
 originally written by Jennifer Lotz and Greg Snyder.
@@ -39,7 +39,7 @@ originally written by Jennifer Lotz and Greg Snyder.
 If you use this code for a scientific publication, please cite the following
 article:
 
-- `Rodriguez-Gomez et al. (2019) <http://adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
+- `Rodriguez-Gomez et al. (2019) <https://ui.adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
 
 Optionally, the Python package can also be cited using its Zenodo record:
 
