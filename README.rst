@@ -24,11 +24,6 @@ article:
 
 - `Rodriguez-Gomez et al. (2019) <https://ui.adsabs.harvard.edu/abs/2019MNRAS.483.4140R>`_
 
-Optionally, the Python package can also be cited using its Zenodo record:
-
-.. image:: https://zenodo.org/badge/95412529.svg
-   :target: https://zenodo.org/badge/latestdoi/95412529
-
 Licensing
 ---------
 
