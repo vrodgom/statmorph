@@ -737,7 +737,7 @@ class SourceMorphology(object):
         assert self._cutout_extent >= 1.0
         assert self._min_cutout_size >= 2
         # Get dimensions of original bounding box
-        s = self._segmap.slices[self.label - 1]
+        s = self._segmap.slices[self._segmap.get_index(self.label)]
         xmin, xmax = s[1].start, s[1].stop - 1
         ymin, ymax = s[0].start, s[0].stop - 1
         dx, dy = xmax + 1 - xmin, ymax + 1 - ymin
