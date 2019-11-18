@@ -296,7 +296,7 @@ class SourceMorphology(object):
     n_sigma_outlier : scalar, optional
         The number of standard deviations that define a pixel as an
         outlier, relative to its 8 neighbors. Outlying pixels are
-        removed as described in Lotz et al. (2004) If the value is zero
+        removed as described in Lotz et al. (2004). If the value is zero
         or negative, outliers are not removed. The default value is 10.
     annulus_width : float, optional
         The width (in pixels) of the annuli used to calculate the
@@ -579,6 +579,14 @@ class SourceMorphology(object):
         assert M[0, 0] > 0  # already checked by constructor
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
+
+        ny, nx = self._cutout_stamp_maskzeroed_no_bg.shape
+        if (yc < 0) or (yc >= ny) or (xc < 0) or (xc >= nx):
+            warnings.warn('Centroid is out-of-range. Fixing at center of ' +
+                          'postage stamp (bad!).', AstropyUserWarning)
+            yc = ny / 2.0
+            xc = nx / 2.0
+            self.flag = 1
 
         return np.array([xc, yc])
 
