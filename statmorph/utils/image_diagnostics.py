@@ -60,6 +60,8 @@ def make_figure(morph):
         The figure.
 
     """
+    assert morph.flag_catastrophic == 0  # some cases are not even worth plotting
+
     # I'm tired of dealing with plt.add_subplot, plt.subplots, plg.GridSpec,
     # plt.subplot2grid, etc. and never getting the vertical and horizontal
     # inter-panel spacings to have the same size, so instead let's do

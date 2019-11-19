@@ -388,110 +388,8 @@ class SourceMorphology(object):
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
 
-        # Measure runtime
-        start = time.time()
-
-        if not isinstance(self._segmap, photutils.SegmentationImage):
-            self._segmap = photutils.SegmentationImage(self._segmap)
-
-        # Check sanity of input data
-        if parse_version(photutils.__version__) < parse_version('0.5'):
-            self._segmap.check_label(self.label)
-        else:
-            self._segmap.check_labels([self.label])
-        assert self._segmap.data.shape == self._image.shape
-        if self._mask is not None:
-            assert self._mask.shape == self._image.shape
-            assert self._mask.dtype == np.bool8
-        if self._weightmap is not None:
-            assert self._weightmap.shape == self._image.shape
-
-        # Normalize PSF
-        if self._psf is not None:
-            self._psf = self._psf / np.sum(self._psf)
-
-        # Check that the labeled galaxy segment has a positive flux sum:
-        assert np.sum(self._cutout_stamp_maskzeroed_no_bg) > 0
-
-        # These flags will be modified during the calculations:
-        self.flag = 0  # attempts to flag bad measurements
-        self.flag_sersic = 0  # attempts to flag bad Sersic fits
-
-        # If something goes wrong, use centroid instead of asymmetry center
-        # (better performance in some pathological cases, e.g. GOODS-S 32143):
-        self._use_centroid = False
-
-        # Centroid of the source relative to the "postage stamp" cutout:
-        self._xc_stamp = self.xc_centroid - self.xmin_stamp
-        self._yc_stamp = self.yc_centroid - self.ymin_stamp
-
-        # Print warning if centroid is masked:
-        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
-        if self._cutout_stamp_maskzeroed[ic, jc] == 0:
-            warnings.warn('Centroid is masked.', AstropyUserWarning)
-            self.flag = 1
-
-        # Position of the source's brightest pixel relative to the stamp cutout:
-        maxval = np.max(self._cutout_stamp_maskzeroed_no_bg)
-        maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed_no_bg == maxval)[0]
-        self._x_maxval_stamp = maxval_stamp_pos[1]
-        self._y_maxval_stamp = maxval_stamp_pos[0]
-
-        # ------------------------------------------------------------------
-        # NOTE: no morphology calculations have been done so far, but
-        # this will change below this line. Modify this __init__ with care.
-        # ------------------------------------------------------------------
-
-        # For simplicity, evaluate all "lazy" properties at once:
-        self._calculate_morphology()
-
-        # Check if image is background-subtracted; set flag=1 if not.
-        if np.abs(self.sky_mean) > self.sky_sigma:
-            warnings.warn('Image is not background-subtracted.', AstropyUserWarning)
-            self.flag = 1
-
-        # Check segmaps and set flag=1 if they are very different
-        self._check_segmaps()
-
-        # Save runtime
-        self.runtime = time.time() - start
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def _get_badpixels(self, image):
-        """
-        Detect outliers (bad pixels) as described in Lotz et al. (2004).
-
-        Notes
-        -----
-        ndi.generic_filter(image, np.std, ...) is too slow,
-        so we do a workaround using ndi.convolve.
-        """
-        # Pixel weights, excluding central pixel.
-        w = np.array([
-            [1, 1, 1],
-            [1, 0, 1],
-            [1, 1, 1]], dtype=np.float64)
-        w = w / np.sum(w)
-
-        # Use the fact that var(x) = <x^2> - <x>^2.
-        local_mean = ndi.convolve(image, w)
-        local_mean2 = ndi.convolve(image**2, w)
-        local_std = np.sqrt(local_mean2 - local_mean**2)
-
-        # Get "bad pixels"
-        badpixels = (np.abs(image - local_mean) >
-                      self._n_sigma_outlier * local_std)
-
-        return badpixels
-
-    def _calculate_morphology(self):
-        """
-        Calculate all morphological parameters, which are stored
-        as "lazy" properties.
-        """
-        quantities = [
+        # A list of all the properties that will be calculated:
+        self._quantity_names = [
             'xc_centroid',
             'yc_centroid',
             'ellipticity_centroid',
@@ -543,7 +441,134 @@ class SourceMorphology(object):
             'nx_stamp',
             'ny_stamp',
         ]
-        for q in quantities:
+
+        # Measure runtime
+        start = time.time()
+
+        if not isinstance(self._segmap, photutils.SegmentationImage):
+            self._segmap = photutils.SegmentationImage(self._segmap)
+
+        # Check sanity of input data
+        if parse_version(photutils.__version__) < parse_version('0.5'):
+            self._segmap.check_label(self.label)
+        else:
+            self._segmap.check_labels([self.label])
+        assert self._segmap.data.shape == self._image.shape
+        if self._mask is not None:
+            assert self._mask.shape == self._image.shape
+            assert self._mask.dtype == np.bool8
+        if self._weightmap is not None:
+            assert self._weightmap.shape == self._image.shape
+
+        # Normalize PSF
+        if self._psf is not None:
+            self._psf = self._psf / np.sum(self._psf)
+
+        # These flags will be modified during the calculations:
+        self.flag = 0  # attempts to flag bad measurements
+        self.flag_sersic = 0  # attempts to flag bad Sersic fits
+        self.flag_catastrophic = 0  # this one is reserved for really bad cases
+
+        # If something goes wrong, use centroid instead of asymmetry center
+        # (better performance in some pathological cases, e.g. GOODS-S 32143):
+        self._use_centroid = False
+
+        # Check that the labeled galaxy segment has a positive flux sum.
+        # If not, this is bad enough to abort all calculations and return
+        # an empty object.
+        if np.sum(self._cutout_stamp_maskzeroed_no_bg) <= 0:
+            warnings.warn('Total flux is nonpositive. Returning empty object.',
+                          AstropyUserWarning)
+            self._abort_calculations()
+            return
+
+        # Centroid of the source relative to the "postage stamp" cutout:
+        self._xc_stamp = self.xc_centroid - self.xmin_stamp
+        self._yc_stamp = self.yc_centroid - self.ymin_stamp
+
+        # Print warning if centroid is masked:
+        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
+        if self._cutout_stamp_maskzeroed[ic, jc] == 0:
+            warnings.warn('Centroid is masked.', AstropyUserWarning)
+            self.flag = 1
+
+        # Position of the source's brightest pixel relative to the stamp cutout:
+        maxval = np.max(self._cutout_stamp_maskzeroed_no_bg)
+        maxval_stamp_pos = np.argwhere(self._cutout_stamp_maskzeroed_no_bg == maxval)[0]
+        self._x_maxval_stamp = maxval_stamp_pos[1]
+        self._y_maxval_stamp = maxval_stamp_pos[0]
+
+        # --------------------------------------------------------------------
+        # NOTE: most morphology calculations have not been performed yet, but
+        # this will change below this line. Modify this __init__ with care.
+        # --------------------------------------------------------------------
+
+        # For simplicity, evaluate all "lazy" properties at once:
+        self._calculate_morphology()
+
+        # Check if image is background-subtracted; set flag=1 if not.
+        if np.abs(self.sky_mean) > self.sky_sigma:
+            warnings.warn('Image is not background-subtracted.', AstropyUserWarning)
+            self.flag = 1
+
+        # Check segmaps and set flag=1 if they are very different
+        self._check_segmaps()
+
+        # Save runtime
+        self.runtime = time.time() - start
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def _get_badpixels(self, image):
+        """
+        Detect outliers (bad pixels) as described in Lotz et al. (2004).
+
+        Notes
+        -----
+        ndi.generic_filter(image, np.std, ...) is too slow,
+        so we do a workaround using ndi.convolve.
+        """
+        # Pixel weights, excluding central pixel.
+        w = np.array([
+            [1, 1, 1],
+            [1, 0, 1],
+            [1, 1, 1]], dtype=np.float64)
+        w = w / np.sum(w)
+
+        # Use the fact that var(x) = <x^2> - <x>^2.
+        local_mean = ndi.convolve(image, w)
+        local_mean2 = ndi.convolve(image**2, w)
+        local_std = np.sqrt(local_mean2 - local_mean**2)
+
+        # Get "bad pixels"
+        badpixels = (np.abs(image - local_mean) >
+                      self._n_sigma_outlier * local_std)
+
+        return badpixels
+
+    def _abort_calculations(self):
+        """
+        Some cases are so bad that basically nothing can be measured
+        (e.g. a bunch of pixels with a nonpositive total sum). We
+        deal with these cases by creating an "empty" object and
+        interrupting the constructor.
+        """
+        for q in self._quantity_names:
+            setattr(self, q, -99.0)
+        self.nx_stamp = -99
+        self.ny_stamp = -99
+        self.flag = 1
+        self.flag_sersic = 1
+        self.flag_catastrophic = 1
+        self.runtime = -99.0
+
+    def _calculate_morphology(self):
+        """
+        Calculate all morphological parameters, which are stored
+        as "lazy" properties.
+        """
+        for q in self._quantity_names:
             tmp = self[q]
 
     def _check_segmaps(self):
