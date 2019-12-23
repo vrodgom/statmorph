@@ -243,7 +243,9 @@ class ConvolvedSersic2D(models.Sersic2D):
         if cls.psf is None:
             raise Exception('Must specify PSF using set_psf method.')
 
-        return scipy.signal.fftconvolve(z_sersic, cls.psf, mode='same')
+        # Apparently, scipy.signal also wants double:
+        return scipy.signal.fftconvolve(
+            np.float64(z_sersic), np.float64(cls.psf), mode='same')
 
 
 class SourceMorphology(object):
