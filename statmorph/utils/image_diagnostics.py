@@ -22,21 +22,9 @@ import scipy.signal
 import scipy.ndimage as ndi
 import skimage.transform
 from astropy.io import fits
-from astropy.visualization import LogStretch
+from astropy.visualization import simple_norm
 
 __all__ = ['make_figure']
-
-def normalize(image, m=None, M=None):
-    if m is None:
-        m = np.min(image)
-    if M is None:
-        M = np.max(image)
-
-    retval = (image-m) / (M-m)
-    retval[image <= m] = 0.0
-    retval[image >= M] = 1.0
-
-    return retval
 
 def get_ax(fig, row, col, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig):
     x_ax = (col+1)*eps + col*wpanel
@@ -84,14 +72,9 @@ def make_figure(morph):
     colors = ((0.0, 0.0, 0.0), *cmap_orig.colors)
     cmap = matplotlib.colors.ListedColormap(colors)
 
-    log_stretch = LogStretch(a=10000.0)
-
     # Get some general info about the image
     image = np.float64(morph._cutout_stamp_maskzeroed)  # skimage wants double
     ny, nx = image.shape
-    m = np.min(image)
-    M = np.max(image)
-    m_stretch, M_stretch = log_stretch([m, M])
     xc, yc = morph._xc_stamp, morph._yc_stamp  # centroid
     xca, yca = morph._asymmetry_center  # asym. center
     xcs, ycs = morph._sersic_model.x_0.value, morph._sersic_model.y_0.value  # Sersic center
@@ -103,9 +86,8 @@ def make_figure(morph):
     # Original image #
     ##################
     ax = get_ax(fig, 0, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
-    ax.imshow(log_stretch(normalize(image, m=m, M=M)), cmap='gray', origin='lower',
-              vmin=m_stretch, vmax=M_stretch)
-
+    ax.imshow(image, cmap='gray', origin='lower',
+              norm=simple_norm(image, stretch='log', log_a=10000))
     ax.plot(xc, yc, 'go', markersize=5, label='Centroid')
     R = float(nx**2 + ny**2)
     theta = morph.orientation_centroid
@@ -150,8 +132,8 @@ def make_figure(morph):
     # Add background noise (for realism)
     if morph.sky_sigma > 0:
         sersic_model += np.random.normal(scale=morph.sky_sigma, size=(ny, nx))
-    ax.imshow(log_stretch(normalize(sersic_model, m=m, M=M)), cmap='gray',
-              origin='lower', vmin=m_stretch, vmax=M_stretch)
+    ax.imshow(sersic_model, cmap='gray', origin='lower',
+              norm=simple_norm(image, stretch='log', log_a=10000))
     ax.plot(xcs, ycs, 'ro', markersize=5, label='Sérsic Center')
     R = float(nx**2 + ny**2)
     theta = morph.sersic_theta
@@ -188,7 +170,8 @@ def make_figure(morph):
     y, x = np.mgrid[0:ny, 0:nx]
     sersic_res = morph._cutout_stamp_maskzeroed - morph._sersic_model(x, y)
     sersic_res[morph._mask_stamp] = 0.0
-    ax.imshow(normalize(sersic_res), cmap='gray', origin='lower')
+    ax.imshow(sersic_res, cmap='gray', origin='lower',
+              norm=simple_norm(sersic_res, stretch='linear'))
     ax.set_title('Sérsic Residual, ' + r'$I - I_{\rm model}$', fontsize=14)
     ax.set_xlim(0, nx)
     ax.set_ylim(0, ny)
@@ -209,7 +192,8 @@ def make_figure(morph):
     mask_180 = mask_180 >= 0.5  # convert back to bool
     mask_symmetric = mask | mask_180
     image_res = np.where(~mask_symmetric, image_res, 0.0)
-    ax.imshow(normalize(image_res), cmap='gray', origin='lower')
+    ax.imshow(image_res, cmap='gray', origin='lower',
+              norm=simple_norm(image_res, stretch='linear'))
     ax.set_title('Asymmetry Residual, ' + r'$I - I_{180}$', fontsize=14)
     ax.set_xlim(0, nx)
     ax.set_ylim(0, ny)
@@ -220,8 +204,8 @@ def make_figure(morph):
     # Original segmap #
     ###################
     ax = get_ax(fig, 1, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
-    ax.imshow(log_stretch(normalize(image, m=m, M=M)), cmap='gray', origin='lower',
-              vmin=m_stretch, vmax=M_stretch)
+    ax.imshow(image, cmap='gray', origin='lower',
+              norm=simple_norm(image, stretch='log', log_a=10000))
     # Show original segmap
     contour_levels = [0.5]
     contour_colors = [(0,0,0)]
@@ -254,8 +238,8 @@ def make_figure(morph):
     # Gini segmap #
     ###############
     ax = get_ax(fig, 1, 1, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
-    ax.imshow(log_stretch(normalize(image, m=m, M=M)),
-              cmap='gray', origin='lower', vmin=m_stretch, vmax=M_stretch)
+    ax.imshow(image, cmap='gray', origin='lower',
+              norm=simple_norm(image, stretch='log', log_a=10000))
     # Show Gini segmap
     contour_levels = [0.5]
     contour_colors = [(0,0,0)]
