@@ -365,7 +365,7 @@ class SourceMorphology(object):
                  petro_extent_cas=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
-                 sersic_maxiter=500, segmap_overlap_ratio=0.5):
+                 sersic_maxiter=500, segmap_overlap_ratio=0.25):
         self._image = image
         self._segmap = segmap
         self.label = label
