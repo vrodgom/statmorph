@@ -16,7 +16,7 @@ import scipy.signal
 import skimage.measure
 import skimage.transform
 import skimage.feature
-import skimage.morphology
+import skimage.segmentation
 from astropy.utils import lazyproperty
 from astropy.stats import sigma_clipped_stats
 from astropy.modeling import models, fitting
@@ -2035,7 +2035,7 @@ class SourceMorphology(object):
         markers[ypeak, xpeak] = peak_labels
 
         mask = self._cutout_mid_smooth > 0
-        labeled_array = skimage.morphology.watershed(
+        labeled_array = skimage.segmentation.watershed(
             -self._cutout_mid_smooth, markers, connectivity=2, mask=mask)
 
         return labeled_array, peak_labels, xpeak, ypeak
