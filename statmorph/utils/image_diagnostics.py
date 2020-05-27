@@ -221,9 +221,9 @@ def make_figure(morph):
             np.array([ymin, ymin, ymax, ymax, ymin]) + 0.5,
             'b', lw=1.5, label='Skybox')
     # Some text
-    text = ('Sky Mean = %.4f' % (morph.sky_mean) + '\n' +
-            'Sky Median = %.4f' % (morph.sky_median) + '\n' +
-            'Sky Sigma = %.4f' % (morph.sky_sigma))
+    text = ('Sky Mean = %.4e' % (morph.sky_mean) + '\n' +
+            'Sky Median = %.4e' % (morph.sky_median) + '\n' +
+            'Sky Sigma = %.4e' % (morph.sky_sigma))
     ax.text(0.034, 0.966, text,
         horizontalalignment='left', verticalalignment='top',
         transform=ax.transAxes,
