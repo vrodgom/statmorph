@@ -200,7 +200,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
             a, image, center, elongation, theta, fraction, total_sum)
         if curval == 0:
             warnings.warn('Found root by pure chance!', AstropyUserWarning)
-            return r, flag
+            return a, flag
         elif curval < 0:
             a_min = a
         elif curval > 0:
@@ -545,7 +545,7 @@ class SourceMorphology(object):
 
         # Get "bad pixels"
         badpixels = (np.abs(image - local_mean) >
-                      self._n_sigma_outlier * local_std)
+                     self._n_sigma_outlier * local_std)
 
         return badpixels
 
@@ -687,7 +687,8 @@ class SourceMorphology(object):
 
         return eigvals
 
-    def _ellipticity_generic(self, eigvals):
+    @staticmethod
+    def _ellipticity_generic(eigvals):
         """
         The ellipticity of (the Gaussian function that has the same
         second-order moments as) the source. Note that we allow
@@ -698,7 +699,8 @@ class SourceMorphology(object):
 
         return 1.0 - (b / a)
 
-    def _elongation_generic(self, eigvals):
+    @staticmethod
+    def _elongation_generic(eigvals):
         """
         The elongation of (the Gaussian function that has the same
         second-order moments as) the source. Note that we allow
@@ -709,7 +711,8 @@ class SourceMorphology(object):
 
         return a / b
 
-    def _orientation_generic(self, covariance):
+    @staticmethod
+    def _orientation_generic(covariance):
         """
         The orientation (in radians) of the source.
         """
@@ -1395,7 +1398,7 @@ class SourceMorphology(object):
             if cur_skybox_size <= 1:
                 warnings.warn('[skybox] Skybox not found.', AstropyUserWarning)
                 self.flag = 1
-                return (slice(0, 0), slice(0, 0))
+                return slice(0, 0), slice(0, 0)
             else:
                 cur_skybox_size //= 2
                 warnings.warn('[skybox] Reducing skybox size to %d.' % (
@@ -1575,7 +1578,7 @@ class SourceMorphology(object):
         center_0 = np.array([self._xc_stamp, self._yc_stamp])  # initial guess
         center_asym = opt.fmin(self._asymmetry_function, center_0,
                                args=(self._cutout_stamp_maskzeroed, 'cas'),
-                               xtol=1e-6, disp=0)
+                               xtol=1e-6, disp=False)
 
         # Check if flag was activated by _asymmetry_function:
         if self._use_centroid:
@@ -1994,8 +1997,8 @@ class SourceMorphology(object):
         mid_bh_rel_temp = 0.5
 
         temperature = -1.0 * mid_bh_rel_temp * ratio_min
-        res = opt.basinhopping(self._multimode_ratio, q0,
-            minimizer_kwargs={"method": "Nelder-Mead"},
+        res = opt.basinhopping(
+            self._multimode_ratio, q0, minimizer_kwargs={"method": "Nelder-Mead"},
             niter=self._niter_bh_mid, T=temperature, stepsize=mid_stepsize,
             interval=self._niter_bh_mid/2, disp=False, seed=0)
         q_final = res.x[0]
@@ -2509,6 +2512,6 @@ def source_morphology(image, segmap, **kwargs):
     sources_morph = []
     for label in segmap.labels:
         sources_morph.append(SourceMorphology(image, segmap, label, **kwargs))
-        print('Finished processing source %d.\n' % (label))
+        print('Finished processing source %d.\n' % (label,))
 
     return sources_morph

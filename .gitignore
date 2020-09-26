@@ -18,6 +18,9 @@ docs/_templates/*
 dist/*
 statmorph.egg-info/*
 
+# PyCharm stuff
+.idea
+
 # Other, custom
 *.sh
 notebooks/.ipynb_checkpoints/*
