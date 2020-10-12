@@ -161,7 +161,7 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
         cur_fraction = 0.0
     else:
         b = a / elongation
-        ap = photutils.EllipticalAperture(center, a, b, theta)
+        ap = photutils.EllipticalAperture(center, a, b, theta=theta)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         cur_fraction = ap_sum / total_sum
@@ -178,7 +178,8 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     flag = 0  # flag=1 indicates a problem
 
     b_total = a_total / elongation
-    ap_total = photutils.EllipticalAperture(center, a_total, b_total, theta)
+    ap_total = photutils.EllipticalAperture(
+        center, a_total, b_total, theta=theta)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
     if total_sum == 0:
@@ -1090,9 +1091,9 @@ class SourceMorphology(object):
         b_out = a_out / elongation
 
         ellip_annulus = photutils.EllipticalAnnulus(
-            center, a_in, a_out, b_out, theta)
+            center, a_in, a_out, b_out, theta=theta)
         ellip_aperture = photutils.EllipticalAperture(
-            center, a, b, theta)
+            center, a, b, theta=theta)
 
         # Force mean fluxes to be positive:
         ellip_annulus_mean_flux = np.abs(_aperture_mean_nomask(
@@ -1181,7 +1182,8 @@ class SourceMorphology(object):
         a = self._petro_extent_flux * self.rpetro_ellip
         b = a / self.elongation_asymmetry
         theta = self.orientation_asymmetry
-        ap = photutils.EllipticalAperture(self._asymmetry_center, a, b, theta)
+        ap = photutils.EllipticalAperture(
+            self._asymmetry_center, a, b, theta=theta)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         return ap_sum
@@ -1206,7 +1208,7 @@ class SourceMorphology(object):
         b_out = a_out / self.elongation_asymmetry
         theta = self.orientation_asymmetry
         ellip_annulus = photutils.EllipticalAnnulus(
-            (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta)
+            (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta=theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, cutout_smooth, method='exact')
 
@@ -1536,7 +1538,7 @@ class SourceMorphology(object):
                               AstropyUserWarning)
                 self.flag = 1
                 return -99.0  # invalid
-            ap = photutils.EllipticalAnnulus(center, a_in, a_out, b_out, theta)
+            ap = photutils.EllipticalAnnulus(center, a_in, a_out, b_out, theta=theta)
         elif kind == 'shape':
             if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
                 warnings.warn('[shape_asym] Invalid rmax_circ value.',
@@ -2345,7 +2347,7 @@ class SourceMorphology(object):
             a_in = self.rhalf_ellip
         b_out = a_out / self.elongation_asymmetry
         ellip_annulus = photutils.EllipticalAnnulus(
-            center, a_in, a_out, b_out, theta)
+            center, a_in, a_out, b_out, theta=theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, image, method='exact')
         if ellip_annulus_mean_flux <= 0.0:
