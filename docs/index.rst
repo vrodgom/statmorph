@@ -22,7 +22,7 @@ as well as fitting 2D Sérsic profiles.
    
    overview
    installation
-   tutorial
+   notebooks/tutorial
    description
    api
 
