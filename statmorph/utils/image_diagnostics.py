@@ -6,27 +6,19 @@ debugging and/or examining the morphology of a source in detail.
 # Licensed under a 3-Clause BSD License.
 
 import numpy as np
-import warnings
-import time
 import sys
 if 'matplotlib' not in sys.modules:
     import matplotlib
-    if sys.version_info[0] == 2:  # Python 2
-        matplotlib.use('agg')
-    elif sys.version_info[0] == 3:  # Python 3
-        matplotlib.use('Agg')
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors
 import matplotlib.cm
-import scipy.signal
-import scipy.ndimage as ndi
 import skimage.transform
-from astropy.io import fits
 from astropy.visualization import simple_norm
 
 __all__ = ['make_figure']
 
-def get_ax(fig, row, col, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig):
+def _get_ax(fig, row, col, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig):
     x_ax = (col+1)*eps + col*wpanel
     y_ax = eps + (nrows-1-row)*(hpanel+htop)
     return fig.add_axes([x_ax/wfig, y_ax/hfig, wpanel/wfig, hpanel/hfig])
@@ -85,7 +77,7 @@ def make_figure(morph):
     ##################
     # Original image #
     ##################
-    ax = get_ax(fig, 0, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 0, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     ax.imshow(image, cmap='gray', origin='lower',
               norm=simple_norm(image, stretch='log', log_a=10000))
     ax.plot(xc, yc, 'go', markersize=5, label='Centroid')
@@ -126,7 +118,7 @@ def make_figure(morph):
     ##############
     # Sersic fit #
     ##############
-    ax = get_ax(fig, 0, 1, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 0, 1, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     y, x = np.mgrid[0:ny, 0:nx]
     sersic_model = morph._sersic_model(x, y)
     # Add background noise (for realism)
@@ -166,7 +158,7 @@ def make_figure(morph):
     ###################
     # Sersic residual #
     ###################
-    ax = get_ax(fig, 0, 2, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 0, 2, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     y, x = np.mgrid[0:ny, 0:nx]
     sersic_res = morph._cutout_stamp_maskzeroed - morph._sersic_model(x, y)
     sersic_res[morph._mask_stamp] = 0.0
@@ -181,7 +173,7 @@ def make_figure(morph):
     ######################
     # Asymmetry residual #
     ######################
-    ax = get_ax(fig, 0, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 0, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     # Rotate image around asym. center
     # (note that skimage expects pixel positions at lower-left corners)
     image_180 = skimage.transform.rotate(image, 180.0, center=(xca-0.5, yca-0.5))
@@ -203,7 +195,7 @@ def make_figure(morph):
     ###################
     # Original segmap #
     ###################
-    ax = get_ax(fig, 1, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 1, 0, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     ax.imshow(image, cmap='gray', origin='lower',
               norm=simple_norm(image, stretch='log', log_a=10000))
     # Show original segmap
@@ -237,7 +229,7 @@ def make_figure(morph):
     ###############
     # Gini segmap #
     ###############
-    ax = get_ax(fig, 1, 1, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 1, 1, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     ax.imshow(image, cmap='gray', origin='lower',
               norm=simple_norm(image, stretch='log', log_a=10000))
     # Show Gini segmap
@@ -276,7 +268,7 @@ def make_figure(morph):
     ####################
     # Watershed segmap #
     ####################
-    ax = get_ax(fig, 1, 2, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 1, 2, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     labeled_array, peak_labels, xpeak, ypeak = morph._watershed_mid
     labeled_array_plot = (labeled_array % (cmap.N-1)) + 1
     labeled_array_plot[labeled_array == 0] = 0.0  # background is black
@@ -307,7 +299,7 @@ def make_figure(morph):
     ##########################
     # Shape asymmetry segmap #
     ##########################
-    ax = get_ax(fig, 1, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
+    ax = _get_ax(fig, 1, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     ax.imshow(morph._segmap_shape_asym, cmap='gray', origin='lower')
     ax.plot(xca, yca, 'bo', markersize=5, label='Asym. Center')
     r = morph.rpetro_circ
