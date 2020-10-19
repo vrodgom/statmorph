@@ -104,9 +104,9 @@ def make_figure(morph):
     text = 'flag = %d\nEllip. (Centroid) = %.4f\nEllip. (Asym.) = %.4f' % (
         morph.flag, morph.ellipticity_centroid, morph.ellipticity_asymmetry)
     ax.text(0.034, 0.966, text,
-        horizontalalignment='left', verticalalignment='top',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='left', verticalalignment='top',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_xlim(0, nx)
@@ -140,13 +140,13 @@ def make_figure(morph):
     y = ycs + (xprime*np.sin(theta) + yprime*np.cos(theta))
     ax.plot(x, y, 'r', label='Half-Light Ellipse (Sérsic)')
     # Some text
-    text = ('flag_sersic = %d' % (morph.flag_sersic) + '\n' +
-            'Ellip. (Sérsic) = %.4f' % (morph.sersic_ellip) + '\n' +
-            r'$n = %.4f$' % (morph.sersic_n))
+    text = ('flag_sersic = %d' % (morph.flag_sersic,) + '\n' +
+            'Ellip. (Sérsic) = %.4f' % (morph.sersic_ellip,) + '\n' +
+            r'$n = %.4f$' % (morph.sersic_n,))
     ax.text(0.034, 0.966, text,
-        horizontalalignment='left', verticalalignment='top',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='left', verticalalignment='top',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Sérsic Model + Noise', fontsize=14)
@@ -200,10 +200,10 @@ def make_figure(morph):
               norm=simple_norm(image, stretch='log', log_a=10000))
     # Show original segmap
     contour_levels = [0.5]
-    contour_colors = [(0,0,0)]
+    contour_colors = [(0, 0, 0)]
     segmap_stamp = morph._segmap.data[morph._slice_stamp]
     Z = np.float64(segmap_stamp == morph.label)
-    C = ax.contour(Z, contour_levels, colors=contour_colors, linewidths=1.5)
+    ax.contour(Z, contour_levels, colors=contour_colors, linewidths=1.5)
     # Show skybox
     xmin = morph._slice_skybox[1].start
     ymin = morph._slice_skybox[0].start
@@ -213,13 +213,13 @@ def make_figure(morph):
             np.array([ymin, ymin, ymax, ymax, ymin]) + 0.5,
             'b', lw=1.5, label='Skybox')
     # Some text
-    text = ('Sky Mean = %.4e' % (morph.sky_mean) + '\n' +
-            'Sky Median = %.4e' % (morph.sky_median) + '\n' +
-            'Sky Sigma = %.4e' % (morph.sky_sigma))
+    text = ('Sky Mean = %.4e' % (morph.sky_mean,) + '\n' +
+            'Sky Median = %.4e' % (morph.sky_median,) + '\n' +
+            'Sky Sigma = %.4e' % (morph.sky_sigma,))
     ax.text(0.034, 0.966, text,
-        horizontalalignment='left', verticalalignment='top',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='left', verticalalignment='top',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Original Segmap', fontsize=14)
@@ -234,30 +234,30 @@ def make_figure(morph):
               norm=simple_norm(image, stretch='log', log_a=10000))
     # Show Gini segmap
     contour_levels = [0.5]
-    contour_colors = [(0,0,0)]
+    contour_colors = [(0, 0, 0)]
     Z = np.float64(morph._segmap_gini)
-    C = ax.contour(Z, contour_levels, colors=contour_colors, linewidths=1.5)
+    ax.contour(Z, contour_levels, colors=contour_colors, linewidths=1.5)
     # Some text
-    text = r'$\left\langle {\rm S/N} \right\rangle = %.4f$' % (morph.sn_per_pixel)
+    text = r'$\left\langle {\rm S/N} \right\rangle = %.4f$' % (morph.sn_per_pixel,)
     ax.text(0.034, 0.966, text, fontsize=12,
-        horizontalalignment='left', verticalalignment='top',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
-    text = (r'$G = %.4f$' % (morph.gini) + '\n' +
-            r'$M_{20} = %.4f$' % (morph.m20) + '\n' +
-            r'$F(G, M_{20}) = %.4f$' % (morph.gini_m20_bulge) + '\n' +
-            r'$S(G, M_{20}) = %.4f$' % (morph.gini_m20_merger))
+            horizontalalignment='left', verticalalignment='top',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+    text = (r'$G = %.4f$' % (morph.gini,) + '\n' +
+            r'$M_{20} = %.4f$' % (morph.m20,) + '\n' +
+            r'$F(G, M_{20}) = %.4f$' % (morph.gini_m20_bulge,) + '\n' +
+            r'$S(G, M_{20}) = %.4f$' % (morph.gini_m20_merger,))
     ax.text(0.034, 0.034, text, fontsize=12,
-        horizontalalignment='left', verticalalignment='bottom',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
-    text = (r'$C = %.4f$' % (morph.concentration) + '\n' +
-            r'$A = %.4f$' % (morph.asymmetry) + '\n' +
-            r'$S = %.4f$' % (morph.smoothness))
+            horizontalalignment='left', verticalalignment='bottom',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+    text = (r'$C = %.4f$' % (morph.concentration,) + '\n' +
+            r'$A = %.4f$' % (morph.asymmetry,) + '\n' +
+            r'$S = %.4f$' % (morph.smoothness,))
     ax.text(0.966, 0.034, text, fontsize=12,
-        horizontalalignment='right', verticalalignment='bottom',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='right', verticalalignment='bottom',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
     ax.set_xlim(0, nx)
     ax.set_ylim(0, ny)
@@ -282,13 +282,13 @@ def make_figure(morph):
         ax.plot(sorted_xpeak[1] + 0.5, sorted_ypeak[1] + 0.5, 'ro', markersize=2,
                 label='Second Peak')
     # Some text
-    text = (r'$M = %.4f$' % (morph.multimode) + '\n' +
-            r'$I = %.4f$' % (morph.intensity) + '\n' +
-            r'$D = %.4f$' % (morph.deviation))
+    text = (r'$M = %.4f$' % (morph.multimode,) + '\n' +
+            r'$I = %.4f$' % (morph.intensity,) + '\n' +
+            r'$D = %.4f$' % (morph.deviation,))
     ax.text(0.034, 0.034, text, fontsize=12,
-        horizontalalignment='left', verticalalignment='bottom',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='left', verticalalignment='bottom',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Watershed Segmap (' + r'$I$' + ' statistic)', fontsize=14)
     ax.set_xlim(0, nx)
@@ -309,13 +309,14 @@ def make_figure(morph):
     ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'r',
             label=r'$r_{\rm petro, ellip}$')
     r = morph.rmax_circ
-    ax.plot(np.floor(xca) + r*np.cos(theta_vec), np.floor(yca) + r*np.sin(theta_vec),
+    ax.plot(np.floor(xca) + r*np.cos(theta_vec),
+            np.floor(yca) + r*np.sin(theta_vec),
             'c', lw=1.5, label=r'$r_{\rm max}$')
-    text = (r'$A_S = %.4f$' % (morph.shape_asymmetry))
+    text = (r'$A_S = %.4f$' % (morph.shape_asymmetry,))
     ax.text(0.034, 0.034, text, fontsize=12,
-        horizontalalignment='left', verticalalignment='bottom',
-        transform=ax.transAxes,
-        bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
+            horizontalalignment='left', verticalalignment='bottom',
+            transform=ax.transAxes,
+            bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_xlim(0, nx)
     ax.set_ylim(0, ny)
@@ -326,6 +327,6 @@ def make_figure(morph):
     fig.subplots_adjust(left=eps/wfig, right=1-eps/wfig, bottom=eps/hfig,
                         top=1.0-htop/hfig, wspace=eps/wfig, hspace=htop/hfig)
 
-    #fig.savefig('test_segmap.png', dpi=150)
+    # fig.savefig('test_segmap.png', dpi=150)
     
     return fig
