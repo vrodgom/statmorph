@@ -39,14 +39,6 @@ def _quantile(sorted_values, q):
     else:
         return sorted_values[int(q*len(sorted_values))]
 
-def _mode(a, axis=None):
-    """
-    Takes a masked array as input and returns the "mode"
-    as defined in Bertin & Arnouts (1996):
-    mode = 2.5 * median - 1.5 * mean
-    """
-    return 2.5*np.ma.median(a, axis=axis) - 1.5*np.ma.mean(a, axis=axis)
-
 def _local_variance(image):
     """
     Calculate a map of the local variance around each pixel, based on
@@ -2216,10 +2208,14 @@ class SourceMorphology(object):
                 self.flag = 1
                 return ~self._mask_stamp_no_bg
 
+        # Define the "mode" as in Bertin & Arnouts (1996):
+        bkg_estimator = photutils.ModeEstimatorBackground(median_factor=2.5,
+                                                          mean_factor=1.5)
+
         # Do sigma-clipping until convergence
         mean, median, std = sigma_clipped_stats(
             self._cutout_stamp_maskzeroed, mask=total_mask, sigma=3.0,
-            maxiters=None, cenfunc=_mode)
+            maxiters=None, cenfunc=bkg_estimator)
 
         # Mode as defined in Bertin & Arnouts (1996)
         mode = 2.5*median - 1.5*mean
