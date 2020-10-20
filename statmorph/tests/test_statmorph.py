@@ -3,8 +3,6 @@ Tests for the statmorph morphology code. Based on the tutorial example.
 """
 # Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
 # Licensed under a 3-Clause BSD License.
-from __future__ import absolute_import, division, print_function
-
 import numpy as np
 import os
 import time

@@ -4,8 +4,6 @@ of galaxy images.
 """
 # Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
 # Licensed under a 3-Clause BSD License.
-from __future__ import absolute_import, division, print_function
-
 from pkg_resources import parse_version
 import warnings
 import time
