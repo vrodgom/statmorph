@@ -30,14 +30,17 @@ __version__ = '0.3.6'
 
 def _quantile(sorted_values, q):
     """
-    For a sorted (in increasing order) 1-d array, return the
-    value corresponding to the quantile ``q``.
+    For a sorted (in increasing order) 1-d array, return the value
+    corresponding to the quantile ``q``.
+
+    Notes
+    -----
+    The result is identical to np.percentile(..., interpolation='lower'),
+    but the currently defined function is infinitely faster for sorted arrays.
     """
-    assert ((q >= 0) & (q <= 1))
-    if q == 1:
-        return sorted_values[-1]
-    else:
-        return sorted_values[int(q*len(sorted_values))]
+    if q < 0 or q > 1:
+        raise ValueError('Quantiles must be in the range [0, 1].')
+    return sorted_values[int(q*(len(sorted_values)-1))]
 
 def _local_variance(image):
     """
