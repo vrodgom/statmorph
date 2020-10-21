@@ -6,14 +6,19 @@ statmorph
     :alt: PyPI Version
 .. image:: https://anaconda.org/conda-forge/statmorph/badges/version.svg
     :target: https://anaconda.org/conda-forge/statmorph
-    :alt: Anaconda Version
+    :alt: Conda Version
+.. image:: https://anaconda.org/conda-forge/statmorph/badges/downloads.svg
+    :target: https://anaconda.org/conda-forge/statmorph
+    :alt: Conda Downloads
 .. image:: https://travis-ci.org/vrodgom/statmorph.svg?branch=master
     :target: https://travis-ci.org/vrodgom/statmorph
     :alt: Travis Build Status
+.. image:: https://img.shields.io/codecov/c/github/vrodgom/statmorph
+    :target: https://codecov.io/gh/vrodgom/statmorph
+    :alt: Coverage Status
 .. image:: https://readthedocs.org/projects/statmorph/badge/?version=latest
     :target: https://statmorph.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
-
 
 Python code for calculating non-parametric morphological diagnostics of
 galaxy images.
