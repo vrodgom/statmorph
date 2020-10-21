@@ -1,6 +1,9 @@
 language: python
 install:
   - pip install -r requirements.txt
+  - pip install pytest-cov codecov
   - pip install .
 script:
-  - pytest
+  - pytest --cov=statmorph
+after_success:
+  - codecov
