@@ -331,6 +331,4 @@ def make_figure(morph):
     fig.subplots_adjust(left=eps/wfig, right=1-eps/wfig, bottom=eps/hfig,
                         top=1.0-htop/hfig, wspace=eps/wfig, hspace=htop/hfig)
 
-    # fig.savefig('test_segmap.png', dpi=150)
-    
     return fig
