@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors
 import matplotlib.cm
 import skimage.transform
+import statmorph
 from astropy.visualization import simple_norm
 
 __all__ = ['make_figure']
@@ -40,6 +41,9 @@ def make_figure(morph):
         The figure.
 
     """
+    if not isinstance(morph, statmorph.SourceMorphology):
+        raise TypeError('Input must be of type SourceMorphology.')
+
     assert morph.flag_catastrophic == 0  # some cases are not even worth plotting
 
     # I'm tired of dealing with plt.add_subplot, plt.subplots, plg.GridSpec,
