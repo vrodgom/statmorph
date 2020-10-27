@@ -74,8 +74,8 @@ class TestSourceMorphology(object):
         for key in self.correct_values:
             value = self.morph[key]
             value0 = self.correct_values[key]
-            relative_error = np.abs((value - value0) / value0)
-            assert relative_error < 1e-6
+            rel_error = np.abs((value - value0) / value0)
+            assert rel_error < 1e-6, "%s value did not match." % (key,)
 
     def print_values(self):
         for key in self.correct_values:
