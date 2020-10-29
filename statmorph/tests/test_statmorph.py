@@ -8,6 +8,7 @@ import os
 import time
 import statmorph
 from astropy.io import fits
+from numpy.testing import assert_allclose
 
 __all__ = ['runall']
 
@@ -27,14 +28,21 @@ class TestSourceMorphology(object):
             'ellipticity_asymmetry': 0.04806946962244,
             'elongation_asymmetry': 1.05049682522881,
             'orientation_asymmetry': -0.85405676626920,
+            'flux_circ': 5758942.65115976985544,
+            'flux_ellip': 5758313.01348320022225,
             'rpetro_circ': 40.93755531944313,
             'rpetro_ellip': 41.64283484446126,
+            'rmax_circ': 54.10691995800065,
+            'rmax_ellip': 54.57312319389109,
             'rhalf_circ': 21.60803205322342,
             'rhalf_ellip': 22.08125638365687,
             'r20': 11.69548630967248,
+            'r50': 21.62164455681452,
             'r80': 32.07883340820674,
             'gini': 0.38993180299621,
             'm20': -1.54448930789228,
+            'gini_m20_bulge': -0.95950648479940,
+            'gini_m20_merger': -0.15565152883078,
             'sn_per_pixel': 6.80319166183472,
             'concentration': 2.19100140632153,
             'asymmetry': 0.00377345808887,
@@ -54,6 +62,12 @@ class TestSourceMorphology(object):
             'sky_mean': 3.48760604858398,
             'sky_median': -2.68543863296509,
             'sky_sigma': 150.91754150390625,
+            'xmin_stamp': 0,
+            'ymin_stamp': 0,
+            'xmax_stamp': 161,
+            'ymax_stamp': 161,
+            'nx_stamp': 162,
+            'ny_stamp': 162,
         }
 
         # Run statmorph on the same galaxy from which the above values
@@ -72,10 +86,8 @@ class TestSourceMorphology(object):
         assert self.morph['flag'] == 0
         assert self.morph['flag_sersic'] == 0
         for key in self.correct_values:
-            value = self.morph[key]
-            value0 = self.correct_values[key]
-            rel_error = np.abs((value - value0) / value0)
-            assert rel_error < 1e-6, "%s value did not match." % (key,)
+            assert_allclose(self.morph[key], self.correct_values[key],
+                            err_msg="%s value did not match." % (key,))
 
     def print_values(self):
         for key in self.correct_values:
@@ -90,8 +102,8 @@ def runall(print_values=False):
     print('Running statmorph tests...')
     test = TestSourceMorphology()
     test.setup_class()
-    test.test_all()
     if print_values:
         test.print_values()
+    test.test_all()
     print('Time: %g s.' % (time.time() - start))
     print('All tests finished successfully.')
