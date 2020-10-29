@@ -12,6 +12,14 @@ from numpy.testing import assert_allclose
 
 __all__ = ['runall']
 
+def test_catastrophic():
+    label = 1
+    image = np.full((3, 3), -1.0)
+    segmap = np.full((3, 3), label)
+    gain = 1.0
+    morph = statmorph.SourceMorphology(image, segmap, label, gain=gain)
+    assert morph.flag_catastrophic == 1
+
 class TestSourceMorphology(object):
     """
     Check measurements for a test galaxy image + segmap + mask.
@@ -96,7 +104,7 @@ class TestSourceMorphology(object):
 
 def runall(print_values=False):
     """
-    Run all tests. Keep this function for backward compatibility.
+    Run all basic tests. Keep this function for backward compatibility.
     """
     start = time.time()
     print('Running statmorph tests...')
