@@ -40,30 +40,6 @@ def _quantile(sorted_values, q):
         raise ValueError('Quantiles must be in the range [0, 1].')
     return sorted_values[int(q*(len(sorted_values)-1))]
 
-def _local_variance(image):
-    """
-    Calculate a map of the local variance around each pixel, based on
-    its 8 adjacent neighbors
-
-    Notes
-    -----
-    ndi.generic_filter(image, np.std, ...) is too slow,
-    so we do a workaround using ndi.convolve.
-    """
-    # Pixel weights, excluding central pixel.
-    w = np.array([
-        [1, 1, 1],
-        [1, 0, 1],
-        [1, 1, 1]], dtype=np.float64)
-    w = w / np.sum(w)
-
-    # Use the fact that var(x) = <x^2> - <x>^2.
-    local_mean = ndi.convolve(image, w)
-    local_mean2 = ndi.convolve(image**2, w)
-    local_var = local_mean2 - local_mean**2
-
-    return local_var
-
 def _aperture_area(ap, mask, **kwargs):
     """
     Calculate the area of a photutils aperture object,
