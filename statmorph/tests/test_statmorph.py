@@ -8,6 +8,8 @@ import os
 import time
 import statmorph
 from astropy.io import fits
+from astropy.utils.exceptions import AstropyUserWarning
+from astropy.tests.helper import catch_warnings
 from numpy.testing import assert_allclose
 
 __all__ = ['runall']
@@ -17,7 +19,10 @@ def test_catastrophic():
     image = np.full((3, 3), -1.0)
     segmap = np.full((3, 3), label)
     gain = 1.0
-    morph = statmorph.SourceMorphology(image, segmap, label, gain=gain)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=gain)
+        assert w[0].category == AstropyUserWarning
+        assert 'Total flux is nonpositive.' in str(w[0].message)
     assert morph.flag_catastrophic == 1
 
 class TestSourceMorphology(object):
