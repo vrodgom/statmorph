@@ -105,10 +105,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
         r = r_grid[i]
         curval = _fraction_of_total_function_circ(
             r, image, center, fraction, total_sum)
-        if curval == 0:
-            warnings.warn('Found root by pure chance!', AstropyUserWarning)
-            return r, flag
-        elif curval < 0:
+        if curval <= 0:
             r_min = r
         elif curval > 0:
             r_max = r
@@ -169,10 +166,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
         a = a_grid[i]
         curval = _fraction_of_total_function_ellip(
             a, image, center, elongation, theta, fraction, total_sum)
-        if curval == 0:
-            warnings.warn('Found root by pure chance!', AstropyUserWarning)
-            return a, flag
-        elif curval < 0:
+        if curval <= 0:
             a_min = a
         elif curval > 0:
             a_max = a
@@ -989,11 +983,7 @@ class SourceMorphology(object):
                               AstropyUserWarning)
                 self.flag = 1
             curval = self._petrosian_function_circ(r, center)
-            if curval == 0:
-                warnings.warn('[rpetro_circ] We found rpetro by pure chance!',
-                              AstropyUserWarning)
-                return r
-            elif curval > 0:
+            if curval >= 0:
                 r_min = r
             elif curval < 0:
                 if r_min is None:
@@ -1111,11 +1101,7 @@ class SourceMorphology(object):
                               AstropyUserWarning)
                 self.flag = 1
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
-            if curval == 0:
-                warnings.warn('[rpetro_ellip] We found rpetro by pure chance!',
-                              AstropyUserWarning)
-                return a
-            elif curval > 0:
+            if curval >= 0:
                 a_min = a
             elif curval < 0:
                 if a_min is None:
