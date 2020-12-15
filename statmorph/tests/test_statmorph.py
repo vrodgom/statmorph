@@ -5,7 +5,6 @@ Tests for the statmorph morphology package.
 # Licensed under a 3-Clause BSD License.
 import numpy as np
 import os
-import time
 import statmorph
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyUserWarning
@@ -81,42 +80,57 @@ class TestSourceMorphology(object):
             'ymax_stamp': 161,
             'nx_stamp': 162,
             'ny_stamp': 162,
+            'flag': 0,
+            'flag_sersic': 0,
         }
 
         # Run statmorph on the same galaxy from which the above values
         # were obtained.
         curdir = os.path.dirname(__file__)
-        hdulist = fits.open('%s/data/slice.fits' % (curdir,))
-        image = hdulist[0].data
-        segmap = hdulist[1].data
-        mask = np.bool8(hdulist[2].data)
-        gain = 1.0
-        source_morphs = statmorph.source_morphology(image, segmap, mask=mask,
-                                                    gain=gain)
-        self.morph = source_morphs[0]
+        with fits.open('%s/data/slice.fits' % (curdir,)) as hdulist:
+            self.image = hdulist[0].data
+            self.segmap = hdulist[1].data
+            self.mask = np.bool8(hdulist[2].data)
+        self.gain = 1.0
 
-    def test_all(self):
-        assert self.morph['flag'] == 0
-        assert self.morph['flag_sersic'] == 0
+    def test_no_psf(self, print_values=False):
+        source_morphs = statmorph.source_morphology(
+            self.image, self.segmap, mask=self.mask, gain=self.gain)
+        morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(self.morph[key], self.correct_values[key],
+            assert_allclose(morph[key], self.correct_values[key],
+                            err_msg="%s value did not match." % (key,))
+            if print_values:
+                print("'%s': %.14g," % (key, morph[key]))
+
+    def test_psf(self):
+        # Try delta-like PSF, which should give the same results as no PSF.
+        psf = np.array([[0, 0, 0],
+                        [0, 1, 0],
+                        [0, 0, 0]], dtype=np.float64)
+        source_morphs = statmorph.source_morphology(
+            self.image, self.segmap, mask=self.mask, gain=self.gain, psf=psf)
+        morph = source_morphs[0]
+        for key in self.correct_values:
+            assert_allclose(morph[key], self.correct_values[key],
                             err_msg="%s value did not match." % (key,))
 
-    def print_values(self):
+    def test_weightmap(self):
+        # Manually create weight map instead of using the gain argument.
+        weightmap = np.sqrt(
+            np.abs(self.image) / self.gain + self.correct_values['sky_sigma']**2)
+        source_morphs = statmorph.source_morphology(
+            self.image, self.segmap, mask=self.mask, weightmap=weightmap)
+        morph = source_morphs[0]
         for key in self.correct_values:
-            print("'%s': %.14f," % (key, self.morph[key]))
+            assert_allclose(morph[key], self.correct_values[key],
+                            err_msg="%s value did not match." % (key,))
 
 
 def runall(print_values=False):
     """
-    Run all basic tests. Keep this function for backward compatibility.
+    Run the most basic tests. Keep this function for backward compatibility.
     """
-    start = time.time()
-    print('Running statmorph tests...')
     test = TestSourceMorphology()
     test.setup_class()
-    if print_values:
-        test.print_values()
-    test.test_all()
-    print('Time: %g s.' % (time.time() - start))
-    print('All tests finished successfully.')
+    test.test_no_psf(print_values=print_values)
