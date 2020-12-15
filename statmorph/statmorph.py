@@ -1698,8 +1698,9 @@ class SourceMorphology(object):
     @lazyproperty
     def smoothness(self):
         """
-        Calculate smoothness (a.k.a. clumpiness) as described in
-        Conselice (2003).
+        Calculate smoothness (a.k.a. clumpiness) as defined in eq. (11)
+        from Lotz et al. (2004). Note that the original definition by
+        Conselice (2003) includes an additional factor of 10.
         """
         image = self._cutout_stamp_maskzeroed
 
