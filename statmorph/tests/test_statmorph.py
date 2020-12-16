@@ -24,6 +24,22 @@ def test_catastrophic():
         assert 'Total flux is nonpositive.' in str(w[0].message)
     assert morph.flag_catastrophic == 1
 
+def test_small_source():
+    np.random.seed(1)
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
+    image += 0.001 * np.random.standard_normal(size=(ny, nx))
+    segmap = np.int64(image > 0.1)
+    label = 1
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-1].category == AstropyUserWarning
+        assert 'Single clump!' in str(w[-1].message)
+    assert morph.flag == 0
+    assert morph.multimode == 0
+    assert morph.intensity == 0
+
 class TestSourceMorphology(object):
     """
     Check measurements for a test galaxy image + segmap + mask.
