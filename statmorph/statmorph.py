@@ -27,6 +27,60 @@ __all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
 
 __version__ = '0.3.6'
 
+# A list of all the quantities that are calculated by SourceMorphology:
+_quantity_names = [
+    'xc_centroid',
+    'yc_centroid',
+    'ellipticity_centroid',
+    'elongation_centroid',
+    'orientation_centroid',
+    'xc_asymmetry',
+    'yc_asymmetry',
+    'ellipticity_asymmetry',
+    'elongation_asymmetry',
+    'orientation_asymmetry',
+    'flux_circ',
+    'flux_ellip',
+    'rpetro_circ',
+    'rpetro_ellip',
+    'rmax_circ',
+    'rmax_ellip',
+    'rhalf_circ',
+    'rhalf_ellip',
+    'r20',
+    'r50',
+    'r80',
+    'gini',
+    'm20',
+    'gini_m20_bulge',
+    'gini_m20_merger',
+    'sn_per_pixel',
+    'concentration',
+    'asymmetry',
+    'smoothness',
+    'multimode',
+    'intensity',
+    'deviation',
+    'outer_asymmetry',
+    'shape_asymmetry',
+    'sersic_amplitude',
+    'sersic_rhalf',
+    'sersic_n',
+    'sersic_xc',
+    'sersic_yc',
+    'sersic_ellip',
+    'sersic_theta',
+    'sky_mean',
+    'sky_median',
+    'sky_sigma',
+    'xmin_stamp',
+    'ymin_stamp',
+    'xmax_stamp',
+    'ymax_stamp',
+    'nx_stamp',
+    'ny_stamp',
+]
+
 def _quantile(sorted_values, q):
     """
     For a sorted (in increasing order) 1-d array, return the value
@@ -354,60 +408,6 @@ class SourceMorphology(object):
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
 
-        # A list of all the properties that will be calculated:
-        self._quantity_names = [
-            'xc_centroid',
-            'yc_centroid',
-            'ellipticity_centroid',
-            'elongation_centroid',
-            'orientation_centroid',
-            'xc_asymmetry',
-            'yc_asymmetry',
-            'ellipticity_asymmetry',
-            'elongation_asymmetry',
-            'orientation_asymmetry',
-            'flux_circ',
-            'flux_ellip',
-            'rpetro_circ',
-            'rpetro_ellip',
-            'rmax_circ',
-            'rmax_ellip',
-            'rhalf_circ',
-            'rhalf_ellip',
-            'r20',
-            'r50',
-            'r80',
-            'gini',
-            'm20',
-            'gini_m20_bulge',
-            'gini_m20_merger',
-            'sn_per_pixel',
-            'concentration',
-            'asymmetry',
-            'smoothness',
-            'multimode',
-            'intensity',
-            'deviation',
-            'outer_asymmetry',
-            'shape_asymmetry',
-            'sersic_amplitude',
-            'sersic_rhalf',
-            'sersic_n',
-            'sersic_xc',
-            'sersic_yc',
-            'sersic_ellip',
-            'sersic_theta',
-            'sky_mean',
-            'sky_median',
-            'sky_sigma',
-            'xmin_stamp',
-            'ymin_stamp',
-            'xmax_stamp',
-            'ymax_stamp',
-            'nx_stamp',
-            'ny_stamp',
-        ]
-
         # Measure runtime
         start = time.time()
 
@@ -522,7 +522,7 @@ class SourceMorphology(object):
         deal with these cases by creating an "empty" object and
         interrupting the constructor.
         """
-        for q in self._quantity_names:
+        for q in _quantity_names:
             setattr(self, q, -99.0)
         self.nx_stamp = -99
         self.ny_stamp = -99
@@ -536,7 +536,7 @@ class SourceMorphology(object):
         Calculate all morphological parameters, which are stored
         as "lazy" properties.
         """
-        for q in self._quantity_names:
+        for q in _quantity_names:
             tmp = self[q]
 
     def _check_segmaps(self):
