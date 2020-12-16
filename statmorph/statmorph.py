@@ -2328,12 +2328,8 @@ class SourceMorphology(object):
         fit_weights[locs] = 1.0 / weightmap[locs]
 
         # Initial guess
-        if self.concentration < 3.0:
-            guess_n = 1.0
-        elif self.concentration < 4.0:
-            guess_n = 2.0
-        else:
-            guess_n = 3.5
+        guess_n = 10.0**(-1.5) * self.concentration**3.5  # empirical
+        guess_n = min(max(guess_n, 1.0), 3.5)  # limit to range [1.0, 3.5]
         xc, yc = self._asymmetry_center
         if self._psf is None:
             sersic_init = models.Sersic2D(
