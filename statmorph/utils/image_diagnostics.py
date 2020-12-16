@@ -177,11 +177,11 @@ def make_figure(morph):
     ax = _get_ax(fig, 0, 3, nrows, ncols, wpanel, hpanel, htop, eps, wfig, hfig)
     # Rotate image around asym. center
     # (note that skimage expects pixel positions at lower-left corners)
-    image_180 = skimage.transform.rotate(image, 180.0, center=(xca-0.5, yca-0.5))
+    image_180 = skimage.transform.rotate(image, 180.0, center=(xca, yca))
     image_res = image - image_180
     # Apply symmetric mask
     mask = morph._mask_stamp.copy()
-    mask_180 = skimage.transform.rotate(mask, 180.0, center=(xca-0.5, yca-0.5))
+    mask_180 = skimage.transform.rotate(mask, 180.0, center=(xca, yca))
     mask_180 = mask_180 >= 0.5  # convert back to bool
     mask_symmetric = mask | mask_180
     image_res = np.where(~mask_symmetric, image_res, 0.0)
@@ -210,8 +210,8 @@ def make_figure(morph):
     ymin = morph._slice_skybox[0].start
     xmax = morph._slice_skybox[1].stop - 1
     ymax = morph._slice_skybox[0].stop - 1
-    ax.plot(np.array([xmin, xmax, xmax, xmin, xmin]) + 0.5,
-            np.array([ymin, ymin, ymax, ymax, ymin]) + 0.5,
+    ax.plot(np.array([xmin, xmax, xmax, xmin, xmin]),
+            np.array([ymin, ymin, ymax, ymax, ymin]),
             'b', lw=1.5, label='Skybox')
     # Some text
     text = ('Sky Mean = %.4e' % (morph.sky_mean,) + '\n' +
@@ -222,6 +222,8 @@ def make_figure(morph):
             transform=ax.transAxes,
             bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Original Segmap', fontsize=14)
     ax.get_xaxis().set_visible(False)
@@ -277,10 +279,10 @@ def make_figure(morph):
               norm=matplotlib.colors.NoNorm())
     sorted_flux_sums, sorted_xpeak, sorted_ypeak = morph._intensity_sums
     if len(sorted_flux_sums) > 0:
-        ax.plot(sorted_xpeak[0] + 0.5, sorted_ypeak[0] + 0.5, 'bo', markersize=2,
+        ax.plot(sorted_xpeak[0], sorted_ypeak[0], 'bo', markersize=2,
                 label='First Peak')
     if len(sorted_flux_sums) > 1:
-        ax.plot(sorted_xpeak[1] + 0.5, sorted_ypeak[1] + 0.5, 'ro', markersize=2,
+        ax.plot(sorted_xpeak[1], sorted_ypeak[1], 'ro', markersize=2,
                 label='Second Peak')
     # Some text
     text = (r'$M = %.4f$' % (morph.multimode,) + '\n' +
@@ -310,8 +312,8 @@ def make_figure(morph):
     ax.plot(xca + r*np.cos(theta_vec), yca + r*np.sin(theta_vec), 'r',
             label=r'$r_{\rm petro, ellip}$')
     r = morph.rmax_circ
-    ax.plot(np.floor(xca) + r*np.cos(theta_vec),
-            np.floor(yca) + r*np.sin(theta_vec),
+    ax.plot(xca + r*np.cos(theta_vec),
+            yca + r*np.sin(theta_vec),
             'c', lw=1.5, label=r'$r_{\rm max}$')
     text = (r'$A_S = %.4f$' % (morph.shape_asymmetry,))
     ax.text(0.034, 0.034, text, fontsize=12,
