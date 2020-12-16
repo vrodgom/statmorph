@@ -10,9 +10,9 @@ statmorph
 .. image:: https://anaconda.org/conda-forge/statmorph/badges/downloads.svg
     :target: https://anaconda.org/conda-forge/statmorph
     :alt: Conda Downloads
-.. image:: https://travis-ci.org/vrodgom/statmorph.svg?branch=master
-    :target: https://travis-ci.org/vrodgom/statmorph
-    :alt: Travis Build Status
+.. image:: https://github.com/vrodgom/statmorph/workflows/CI/badge.svg
+    :target: https://github.com/vrodgom/statmorph/actions
+    :alt: Build Status
 .. image:: https://img.shields.io/codecov/c/github/vrodgom/statmorph
     :target: https://codecov.io/gh/vrodgom/statmorph
     :alt: Coverage Status
