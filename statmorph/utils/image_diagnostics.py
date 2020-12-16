@@ -75,9 +75,6 @@ def make_figure(morph):
     xca, yca = morph._asymmetry_center  # asym. center
     xcs, ycs = morph._sersic_model.x_0.value, morph._sersic_model.y_0.value  # Sersic center
 
-    # Plot everything w.r.t. centers of pixels (instead of lower-left corners):
-    xc += 0.5; yc += 0.5; xca += 0.5; yca += 0.5; xcs += 0.5; ycs += 0.5
-
     ##################
     # Original image #
     ##################
@@ -113,8 +110,8 @@ def make_figure(morph):
             bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.set_title('Original Image (Log Stretch)', fontsize=14)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
@@ -154,8 +151,8 @@ def make_figure(morph):
     # Finish plot
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Sérsic Model + Noise', fontsize=14)
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
@@ -169,8 +166,8 @@ def make_figure(morph):
     ax.imshow(sersic_res, cmap='gray', origin='lower',
               norm=simple_norm(sersic_res, stretch='linear'))
     ax.set_title('Sérsic Residual, ' + r'$I - I_{\rm model}$', fontsize=14)
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
@@ -191,8 +188,8 @@ def make_figure(morph):
     ax.imshow(image_res, cmap='gray', origin='lower',
               norm=simple_norm(image_res, stretch='linear'))
     ax.set_title('Asymmetry Residual, ' + r'$I - I_{180}$', fontsize=14)
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
@@ -263,8 +260,8 @@ def make_figure(morph):
             transform=ax.transAxes,
             bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     # Finish plot
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.set_title('Gini Segmap', fontsize=14)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
@@ -295,8 +292,8 @@ def make_figure(morph):
             bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
     ax.set_title('Watershed Segmap (' + r'$I$' + ' statistic)', fontsize=14)
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
@@ -322,8 +319,8 @@ def make_figure(morph):
             transform=ax.transAxes,
             bbox=dict(facecolor='white', alpha=1.0, boxstyle='round'))
     ax.legend(loc=4, fontsize=12, facecolor='w', framealpha=1.0, edgecolor='k')
-    ax.set_xlim(0, nx)
-    ax.set_ylim(0, ny)
+    ax.set_xlim(-0.5, nx-0.5)
+    ax.set_ylim(-0.5, ny-0.5)
     ax.set_title('Shape Asymmetry Segmap', fontsize=14)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
