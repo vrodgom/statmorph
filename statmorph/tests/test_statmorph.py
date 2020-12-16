@@ -13,6 +13,7 @@ from numpy.testing import assert_allclose
 
 __all__ = ['runall']
 
+
 def test_catastrophic():
     label = 1
     image = np.full((3, 3), -1.0)
@@ -23,6 +24,7 @@ def test_catastrophic():
         assert w[0].category == AstropyUserWarning
         assert 'Total flux is nonpositive.' in str(w[0].message)
     assert morph.flag_catastrophic == 1
+
 
 def test_small_source():
     np.random.seed(1)
@@ -39,6 +41,21 @@ def test_small_source():
     assert morph.flag == 0
     assert morph.multimode == 0
     assert morph.intensity == 0
+
+
+def test_full_segmap():
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
+    segmap = np.ones((ny, nx), dtype=np.int64)
+    label = 1
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-1].category == AstropyUserWarning
+        assert 'Image is not background-subtracted.' in str(w[-1].message)
+    assert morph.flag == 1
+    assert morph._slice_skybox == (slice(0, 0), slice(0, 0))
+
 
 class TestSourceMorphology(object):
     """
