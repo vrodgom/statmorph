@@ -57,6 +57,18 @@ def test_full_segmap():
     assert morph._slice_skybox == (slice(0, 0), slice(0, 0))
 
 
+def test_random_noise():
+    np.random.seed(1)
+    ny, nx = 11, 11
+    image = 0.001 * np.random.standard_normal(size=(ny, nx))
+    segmap = np.ones((ny, nx), dtype=np.int64)
+    label = 1
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-1].category == AstropyUserWarning
+    assert morph.flag == 1
+
+
 class TestSourceMorphology(object):
     """
     Check measurements for a test galaxy image + segmap + mask.

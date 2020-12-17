@@ -1344,6 +1344,7 @@ class SourceMorphology(object):
         if self._mask is not None:
             mask = self._mask[self._slice_stamp]
 
+        assert self._skybox_size >= 2
         cur_skybox_size = self._skybox_size
         while True:
             for i in range(0, ny - cur_skybox_size):
@@ -1362,9 +1363,6 @@ class SourceMorphology(object):
                 cur_skybox_size //= 2
                 warnings.warn('[skybox] Reducing skybox size to %d.' % (
                               cur_skybox_size), AstropyUserWarning)
-
-        # Should not reach this point.
-        raise AssertionError
 
     @lazyproperty
     def sky_mean(self):
