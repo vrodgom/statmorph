@@ -86,6 +86,23 @@ def test_masked_centroid():
     assert morph.flag == 1
 
 
+def test_bright_pixel():
+    # Bright pixel outside of main segment of MID segmap.
+    label = 1
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
+    image[7, 7] = 1.0
+    segmap = np.int64(image > 1e-3)
+    segmap[5, 5] = 0
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           n_sigma_outlier=-1)
+        assert w[0].category == AstropyUserWarning
+        assert 'Adding brightest pixel to segmap.' in str(w[0].message)
+    assert morph.flag == 1
+
+
 def test_small_source():
     np.random.seed(1)
     ny, nx = 11, 11
