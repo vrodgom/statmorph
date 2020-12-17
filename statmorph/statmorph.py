@@ -155,7 +155,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     i = 0  # initial value
     while True:
         if i >= npoints:
-            raise Exception('Root not found within range.')
+            raise RuntimeError('Root not found within range.')
         r = r_grid[i]
         curval = _fraction_of_total_function_circ(
             r, image, center, fraction, total_sum)
@@ -216,7 +216,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     i = 0  # initial value
     while True:
         if i >= npoints:
-            raise Exception('Root not found within range.')
+            raise RuntimeError('Root not found within range.')
         a = a_grid[i]
         curval = _fraction_of_total_function_ellip(
             a, image, center, elongation, theta, fraction, total_sum)
@@ -260,7 +260,7 @@ class ConvolvedSersic2D(models.Sersic2D):
         z_sersic = models.Sersic2D.evaluate(x, y, amplitude, r_eff, n, x_0, y_0,
                                             ellip, theta)
         if cls.psf is None:
-            raise Exception('Must specify PSF using set_psf method.')
+            raise AssertionError('Must specify PSF using set_psf method.')
 
         # Apparently, scipy.signal also wants double:
         return scipy.signal.fftconvolve(
@@ -881,7 +881,7 @@ class SourceMorphology(object):
         """
         if self._weightmap is None:
             if self._gain is None:
-                raise Exception('Must provide either weightmap or gain.')
+                raise AssertionError('Must provide either weightmap or gain.')
             else:
                 assert self._gain > 0
                 weightmap_stamp = np.sqrt(
@@ -1508,7 +1508,7 @@ class SourceMorphology(object):
                 return -99.0  # invalid
             ap = photutils.CircularAperture(center, self.rmax_circ)
         else:
-            raise Exception('Asymmetry kind not understood:', kind)
+            raise NotImplementedError('Asymmetry kind not understood:', kind)
 
         # Apply eq. 10 from Lotz et al. (2004)
         ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]

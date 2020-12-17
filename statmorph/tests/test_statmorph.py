@@ -5,13 +5,40 @@ Tests for the statmorph morphology package.
 # Licensed under a 3-Clause BSD License.
 import numpy as np
 import os
+import pytest
 import statmorph
+from astropy.modeling import models
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyUserWarning
 from astropy.tests.helper import catch_warnings
 from numpy.testing import assert_allclose
 
 __all__ = ['runall']
+
+
+def test_convolved_sersic():
+    from scipy.signal import fftconvolve
+    # Create Gaussian PSF
+    size = 10  # on each side from the center
+    sigma_psf = 2.0
+    y, x = np.mgrid[-size:size + 1, -size:size + 1]
+    psf = np.exp(-(x ** 2 + y ** 2) / (2.0 * sigma_psf ** 2))
+    psf /= np.sum(psf)
+    # Create 2D Sersic profile
+    ny, nx = 25, 25
+    y, x = np.mgrid[0:ny, 0:nx]
+    sersic = models.Sersic2D(amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12,
+                             ellip=0.5, theta=0)
+    z = sersic(x, y)
+    # Create "convolved" Sersic profile with same properties as normal one
+    convolved_sersic = statmorph.ConvolvedSersic2D(
+        amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12, ellip=0.5, theta=0)
+    with pytest.raises(AssertionError):
+        _ = convolved_sersic(x, y)  # PSF not set yet
+    convolved_sersic.set_psf(psf)
+    z_convolved = convolved_sersic(x, y)
+    # Compare results
+    assert_allclose(z_convolved, fftconvolve(z, psf, mode='same'))
 
 
 def test_catastrophic():
