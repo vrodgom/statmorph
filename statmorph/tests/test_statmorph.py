@@ -35,7 +35,8 @@ def test_small_source():
     segmap = np.int64(image > 0.1)
     label = 1
     with catch_warnings(AstropyUserWarning) as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           verbose=True)
         assert w[-1].category == AstropyUserWarning
         assert 'Single clump!' in str(w[-1].message)
     assert morph.flag == 0
@@ -50,7 +51,8 @@ def test_full_segmap():
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
     with catch_warnings(AstropyUserWarning) as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           verbose=True)
         assert w[-1].category == AstropyUserWarning
         assert 'Image is not background-subtracted.' in str(w[-1].message)
     assert morph.flag == 1
@@ -64,7 +66,8 @@ def test_random_noise():
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
     with catch_warnings(AstropyUserWarning) as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           verbose=True)
         assert w[-1].category == AstropyUserWarning
     assert morph.flag == 1
 

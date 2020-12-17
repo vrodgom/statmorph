@@ -383,7 +383,7 @@ class SourceMorphology(object):
                  petro_extent_cas=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
-                 sersic_maxiter=500, segmap_overlap_ratio=0.25):
+                 sersic_maxiter=500, segmap_overlap_ratio=0.25, verbose=False):
         self._image = image
         self._segmap = segmap
         self.label = label
@@ -407,6 +407,7 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._sersic_maxiter = sersic_maxiter
         self._segmap_overlap_ratio = segmap_overlap_ratio
+        self._verbose = verbose
 
         # Measure runtime
         start = time.time()
@@ -1361,8 +1362,9 @@ class SourceMorphology(object):
                 return slice(0, 0), slice(0, 0)
             else:
                 cur_skybox_size //= 2
-                warnings.warn('[skybox] Reducing skybox size to %d.' % (
-                              cur_skybox_size), AstropyUserWarning)
+                if self._verbose:
+                    warnings.warn('[skybox] Reducing skybox size to %d.' % (
+                                  cur_skybox_size), AstropyUserWarning)
 
     @lazyproperty
     def sky_mean(self):
@@ -1796,8 +1798,10 @@ class SourceMorphology(object):
         # In these cases we simply assume that the MID segmap
         # is equal to the Gini segmap.
         if self._segmap_mid_function(0.0) > 0.0:
-            warnings.warn('segmap_mid is undefined; using segmap_gini instead.',
-                          AstropyUserWarning)
+            if self._verbose:
+                warnings.warn(
+                    'segmap_mid is undefined; using segmap_gini instead.',
+                    AstropyUserWarning)
             return self._segmap_gini
 
         # Find appropriate quantile using numerical solver
@@ -1939,14 +1943,17 @@ class SourceMorphology(object):
             if ratio_min < 0:  # valid "ratios" should be negative
                 break
             elif mid_stepsize < 1e-3:
-                warnings.warn('[M statistic] Single clump!', AstropyUserWarning)
+                if self._verbose:
+                    warnings.warn(
+                        '[M statistic] Single clump!', AstropyUserWarning)
                 # This sometimes happens when the source is a star, so the user
                 # might want to discard M=0 cases, depending on the dataset.
                 return 0.0
             else:
                 mid_stepsize = mid_stepsize / 2.0
-                warnings.warn('[M statistic] Reduced stepsize to %g.' % (
-                              mid_stepsize), AstropyUserWarning)
+                if self._verbose:
+                    warnings.warn('[M statistic] Reduced stepsize to %g.' % (
+                                  mid_stepsize), AstropyUserWarning)
 
         # STAGE 2: basin-hopping method
 
@@ -2161,8 +2168,9 @@ class SourceMorphology(object):
         # If sky area is too small (e.g., if annulus is outside the
         # image), use skybox instead.
         if np.sum(~total_mask) < self._skybox_size**2:
-            warnings.warn('[shape_asym] Using skybox for background.',
-                          AstropyUserWarning)
+            if self._verbose:
+                warnings.warn('[shape_asym] Using skybox for background.',
+                              AstropyUserWarning)
             total_mask = np.ones((ny, nx), dtype=np.bool8)
             total_mask[self._slice_skybox] = False
             # However, if skybox is undefined, there is nothing to do.
