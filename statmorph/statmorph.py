@@ -370,6 +370,10 @@ class SourceMorphology(object):
         The minimum ratio between the area of the intersection of
         all 3 segmaps and the area of the largest segmap in order to
         have a good measurement.
+    verbose : bool, optional
+        If ``True``, this prints various minor warnings (which do not
+        set off the "bad measurement" flag) during the calculations.
+        The default value is ``False``.
 
     References
     ----------
