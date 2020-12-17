@@ -16,28 +16,45 @@ from numpy.testing import assert_allclose
 __all__ = ['runall']
 
 
+def test_quantile():
+    from statmorph.statmorph import _quantile
+    quantiles = np.linspace(0, 1, 11)
+    data = np.arange(25, dtype=np.float64)**2
+    # Compare with np.percentile (note that _quantile() assumes that the
+    # input array is already sorted, so it's much faster in these cases).
+    res1 = []; res2 = []
+    for q in quantiles:
+        res1.append(_quantile(data, q))
+        res2.append(np.percentile(data, 100*q, interpolation='lower'))
+    assert_allclose(res1, res2)
+    # Check out-of-range input.
+    with pytest.raises(ValueError):
+        _ = _quantile(data, -0.5)
+        _ = _quantile(data, 1.5)
+
+
 def test_convolved_sersic():
     from scipy.signal import fftconvolve
-    # Create Gaussian PSF
+    # Create Gaussian PSF.
     size = 10  # on each side from the center
     sigma_psf = 2.0
     y, x = np.mgrid[-size:size + 1, -size:size + 1]
     psf = np.exp(-(x ** 2 + y ** 2) / (2.0 * sigma_psf ** 2))
     psf /= np.sum(psf)
-    # Create 2D Sersic profile
+    # Create 2D Sersic profile.
     ny, nx = 25, 25
     y, x = np.mgrid[0:ny, 0:nx]
     sersic = models.Sersic2D(amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12,
                              ellip=0.5, theta=0)
     z = sersic(x, y)
-    # Create "convolved" Sersic profile with same properties as normal one
+    # Create "convolved" Sersic profile with same properties as normal one.
     convolved_sersic = statmorph.ConvolvedSersic2D(
         amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12, ellip=0.5, theta=0)
     with pytest.raises(AssertionError):
         _ = convolved_sersic(x, y)  # PSF not set yet
     convolved_sersic.set_psf(psf)
     z_convolved = convolved_sersic(x, y)
-    # Compare results
+    # Compare results.
     assert_allclose(z_convolved, fftconvolve(z, psf, mode='same'))
 
 
