@@ -70,6 +70,22 @@ def test_catastrophic():
     assert morph.flag_catastrophic == 1
 
 
+def test_masked_centroid():
+    label = 1
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
+    segmap = np.int64(image > 1e-3)
+    mask = np.zeros((ny, nx), dtype=np.bool8)
+    mask[5, 5] = True
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           mask=mask)
+        assert w[0].category == AstropyUserWarning
+        assert 'Centroid is masked.' in str(w[0].message)
+    assert morph.flag == 1
+
+
 def test_small_source():
     np.random.seed(1)
     ny, nx = 11, 11

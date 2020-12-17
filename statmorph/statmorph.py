@@ -452,7 +452,7 @@ class SourceMorphology(object):
         self._yc_stamp = self.yc_centroid - self.ymin_stamp
 
         # Print warning if centroid is masked:
-        ic, jc = int(self._yc_stamp), int(self._xc_stamp)
+        ic, jc = int(np.round(self._yc_stamp)), int(np.round(self._xc_stamp))
         if self._cutout_stamp_maskzeroed[ic, jc] == 0:
             warnings.warn('Centroid is masked.', AstropyUserWarning)
             self.flag = 1
@@ -1544,7 +1544,7 @@ class SourceMorphology(object):
             center_asym = center_0
 
         # Print warning if center is masked
-        ic, jc = int(center_asym[1]), int(center_asym[0])
+        ic, jc = int(np.round(center_asym[1])), int(np.round(center_asym[0]))
         if self._cutout_stamp_maskzeroed[ic, jc] == 0:
             warnings.warn('[asym_center] Asymmetry center is masked.',
                           AstropyUserWarning)
@@ -1735,8 +1735,8 @@ class SourceMorphology(object):
 
         # Instead of assuming that the main segment is at the center
         # of the stamp, use the position of the brightest pixel:
-        ic = int(self._y_maxval_stamp)
-        jc = int(self._x_maxval_stamp)
+        ic = int(np.round(self._y_maxval_stamp))
+        jc = int(np.round(self._x_maxval_stamp))
 
         # Grow regions using 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
@@ -1813,8 +1813,8 @@ class SourceMorphology(object):
         segmap = segmap_float > 0.5
 
         # Make sure that brightest pixel is in segmap
-        ic = int(self._y_maxval_stamp)
-        jc = int(self._x_maxval_stamp)
+        ic = int(np.round(self._y_maxval_stamp))
+        jc = int(np.round(self._x_maxval_stamp))
         if ~segmap[ic, jc]:
             warnings.warn('[segmap_mid] Adding brightest pixel to segmap.',
                           AstropyUserWarning)
