@@ -58,6 +58,14 @@ def test_convolved_sersic():
     assert_allclose(z_convolved, fftconvolve(z, psf, mode='same'))
 
 
+def test_missing_arguments():
+    label = 1
+    image = np.ones((3, 3), dtype=np.float64)
+    segmap = np.ones((3, 3), dtype=np.int64)
+    with pytest.raises(AssertionError):
+        _ = statmorph.SourceMorphology(image, segmap, label)
+
+
 def test_catastrophic():
     label = 1
     image = np.full((3, 3), -1.0)
@@ -87,7 +95,10 @@ def test_masked_centroid():
 
 
 def test_bright_pixel():
-    # Bright pixel outside of main segment of MID segmap.
+    """
+    Test bright pixel outside of main segment. Note that
+    we do not remove outliers.
+    """
     label = 1
     ny, nx = 11, 11
     y, x = np.mgrid[0:ny, 0:nx]

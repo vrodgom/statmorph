@@ -117,9 +117,8 @@ def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
     Helper function to calculate ``_radius_at_fraction_of_total_circ``.
     """
-    if (r < 0) | (fraction < 0) | (fraction > 1) | (total_sum <= 0):
-        raise AssertionError
-    elif r == 0:
+    assert (r >= 0) & (fraction >= 0) & (fraction <= 1) & (total_sum > 0)
+    if r == 0:
         cur_fraction = 0.0
     else:
         ap = photutils.CircularAperture(center, r)
@@ -139,10 +138,9 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     ap_total = photutils.CircularAperture(center, r_total)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    if total_sum == 0:
-        raise AssertionError
-    elif total_sum < 0:
-        warnings.warn('Total flux sum is negative.', AstropyUserWarning)
+    assert total_sum != 0
+    if total_sum < 0:
+        warnings.warn('[r_circ] Total flux sum is negative.', AstropyUserWarning)
         flag = 1
         total_sum = np.abs(total_sum)
 
@@ -151,8 +149,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     r_grid = np.linspace(0.0, r_total, num=npoints)
     i = 0  # initial value
     while True:
-        if i >= npoints:
-            raise RuntimeError('Root not found within range.')
+        assert i < npoints, 'Root not found within range.'
         r = r_grid[i]
         curval = _fraction_of_total_function_circ(
             r, image, center, fraction, total_sum)
@@ -173,9 +170,8 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
     """
     Helper function to calculate ``_radius_at_fraction_of_total_ellip``.
     """
-    if (a < 0) | (fraction < 0) | (fraction > 1) | (total_sum <= 0):
-        raise AssertionError
-    elif a == 0:
+    assert (a >= 0) & (fraction >= 0) & (fraction <= 1) & (total_sum > 0)
+    if a == 0:
         cur_fraction = 0.0
     else:
         b = a / elongation
@@ -200,10 +196,9 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
         center, a_total, b_total, theta=theta)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    if total_sum == 0:
-        raise AssertionError
-    elif total_sum < 0:
-        warnings.warn('Total flux sum is negative.', AstropyUserWarning)
+    assert total_sum != 0
+    if total_sum < 0:
+        warnings.warn('[r_ellip] Total flux sum is negative.', AstropyUserWarning)
         flag = 1
         total_sum = np.abs(total_sum)
 
@@ -212,8 +207,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     a_grid = np.linspace(0.0, a_total, num=npoints)
     i = 0  # initial value
     while True:
-        if i >= npoints:
-            raise RuntimeError('Root not found within range.')
+        assert i < npoints, 'Root not found within range.'
         a = a_grid[i]
         curval = _fraction_of_total_function_ellip(
             a, image, center, elongation, theta, fraction, total_sum)
@@ -424,6 +418,9 @@ class SourceMorphology(object):
             assert self._mask.dtype == np.bool8
         if self._weightmap is not None:
             assert self._weightmap.shape == self._image.shape
+
+        if self._weightmap is None and self._gain is None:
+            raise AssertionError('Must provide either weightmap or gain.')
 
         # Normalize PSF
         if self._psf is not None:
@@ -874,12 +871,10 @@ class SourceMorphology(object):
         ``gain`` argument.
         """
         if self._weightmap is None:
-            if self._gain is None:
-                raise AssertionError('Must provide either weightmap or gain.')
-            else:
-                assert self._gain > 0
-                weightmap_stamp = np.sqrt(
-                    np.abs(self._image[self._slice_stamp])/self._gain + self.sky_sigma**2)
+            # Already checked that gain is not None:
+            assert self._gain > 0
+            weightmap_stamp = np.sqrt(
+                np.abs(self._image[self._slice_stamp])/self._gain + self.sky_sigma**2)
         else:
             weightmap_stamp = self._weightmap[self._slice_stamp]
 
