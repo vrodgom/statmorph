@@ -111,10 +111,7 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     This avoids problems when the aperture is larger than the
     region of interest.
     """
-    if parse_version(photutils.__version__) <= parse_version('0.6'):
-        return ap.do_photometry(image, **kwargs)[0][0] / ap.area()
-    else:
-        return ap.do_photometry(image, **kwargs)[0][0] / ap.area
+    return ap.do_photometry(image, **kwargs)[0][0] / ap.area
 
 def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
@@ -420,10 +417,7 @@ class SourceMorphology(object):
             self._segmap = photutils.SegmentationImage(self._segmap)
 
         # Check sanity of input data
-        if parse_version(photutils.__version__) < parse_version('0.5'):
-            self._segmap.check_label(self.label)
-        else:
-            self._segmap.check_labels([self.label])
+        self._segmap.check_labels([self.label])
         assert self._segmap.data.shape == self._image.shape
         if self._mask is not None:
             assert self._mask.shape == self._image.shape
@@ -1717,10 +1711,7 @@ class SourceMorphology(object):
         if self._sky_smoothness == -99.0:  # invalid skybox
             S = ap_diff / ap_flux
         else:
-            if parse_version(photutils.__version__) <= parse_version('0.6'):
-                S = (ap_diff - ap.area()*self._sky_smoothness) / ap_flux
-            else:
-                S = (ap_diff - ap.area*self._sky_smoothness) / ap_flux
+            S = (ap_diff - ap.area*self._sky_smoothness) / ap_flux
 
         if not np.isfinite(S):
             warnings.warn('Invalid smoothness.', AstropyUserWarning)
@@ -2159,10 +2150,7 @@ class SourceMorphology(object):
         circ_annulus = photutils.CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
-        if parse_version(photutils.__version__) <= parse_version('0.6'):
-            circ_annulus_mask = circ_annulus.to_mask(method='center')[0]
-        else:
-            circ_annulus_mask = circ_annulus.to_mask(method='center')
+        circ_annulus_mask = circ_annulus.to_mask(method='center')
 
         # With the same shape as the postage stamp
         circ_annulus_mask = circ_annulus_mask.to_image((ny, nx))
