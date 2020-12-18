@@ -130,6 +130,23 @@ def test_negative_source():
     assert morph.flag == 1
 
 
+def test_tiny_source():
+    """
+    Test tiny source (actually consisting of a single bright pixel).
+    Note that we do not remove outliers.
+    """
+    label = 1
+    image = np.zeros((5, 5), dtype=np.float64)
+    image[2, 2] = 1.0
+    segmap = np.int64(image)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           n_sigma_outlier=-1)
+        assert w[0].category == AstropyUserWarning
+        assert 'Nonpositive second moment.' in str(w[0].message)
+    assert morph.flag == 1
+
+
 def test_small_source():
     np.random.seed(1)
     ny, nx = 11, 11

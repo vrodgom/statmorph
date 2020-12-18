@@ -984,6 +984,13 @@ class SourceMorphology(object):
                     warnings.warn('[rpetro_circ] r_min is not defined yet.',
                                   AstropyUserWarning)
                     self.flag = 1
+                    if r >= r_outer:
+                        # If r_min is still undefined at this point, then
+                        # rpetro must be smaller than the annulus width.
+                        warnings.warn('rpetro_circ < annulus_width! ' +
+                                      'Setting rpetro_circ = annulus_width.',
+                                      AstropyUserWarning)
+                        return r_inner
                 else:
                     r_max = r
                     break
@@ -1102,6 +1109,13 @@ class SourceMorphology(object):
                     warnings.warn('[rpetro_ellip] a_min is not defined yet.',
                                   AstropyUserWarning)
                     self.flag = 1
+                    if a >= a_outer:
+                        # If a_min is still undefined at this point, then
+                        # rpetro must be smaller than the annulus width.
+                        warnings.warn('rpetro_ellip < annulus_width! ' +
+                                      'Setting rpetro_ellip = annulus_width.',
+                                      AstropyUserWarning)
+                        return a_inner
                 else:
                     a_max = a
                     break
