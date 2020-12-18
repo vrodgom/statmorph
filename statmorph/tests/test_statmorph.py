@@ -147,6 +147,40 @@ def test_tiny_source():
     assert morph.flag == 1
 
 
+def test_insufficient_data():
+    """
+    Test insufficient data for Sersic fit (< 7 pixels).
+    Note that we do not remove outliers.
+    """
+    label = 1
+    image = np.zeros((2, 3), dtype=np.float64)
+    image[:, 1] = 1.0
+    segmap = np.int64(image)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
+                                           n_sigma_outlier=-1)
+        assert w[-1].category == AstropyUserWarning
+        assert '[sersic] Not enough data for fit.' in str(w[-1].message)
+    assert morph.flag == 1
+
+
+def test_asymmetric():
+    """
+    Test a case in which the asymmetry center is pushed outside of
+    the image boundaries.
+    """
+    label = 1
+    y, x = np.mgrid[0:25, 0:25]
+    image = x - 20
+    segmap = image > 0
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[0].category == AstropyUserWarning
+        assert 'Minimizer tried to exit bounds.' in str(w[0].message)
+    assert morph.flag == 1
+    assert morph._use_centroid
+
+
 def test_small_source():
     np.random.seed(1)
     ny, nx = 11, 11
@@ -183,12 +217,13 @@ def test_full_segmap():
 def test_random_noise():
     np.random.seed(1)
     ny, nx = 11, 11
-    image = 0.001 * np.random.standard_normal(size=(ny, nx))
+    image = 0.1 * np.random.standard_normal(size=(ny, nx))
+    weightmap = 0.01 * np.random.standard_normal(size=(ny, nx))
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
     with catch_warnings(AstropyUserWarning) as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
-                                           verbose=True)
+        morph = statmorph.SourceMorphology(image, segmap, label,
+                                           weightmap=weightmap)
         assert w[-1].category == AstropyUserWarning
     assert morph.flag == 1
 
