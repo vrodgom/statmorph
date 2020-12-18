@@ -114,6 +114,22 @@ def test_bright_pixel():
     assert morph.flag == 1
 
 
+def test_negative_source():
+    label = 1
+    ny, nx = 51, 51
+    y, x = np.mgrid[0:ny, 0:nx]
+    r = np.sqrt((x-nx//2)**2 + (y-ny//2)**2)
+    image = np.ones((ny, nx), dtype=np.float64)
+    locs = r > 0
+    image[locs] = 2.0/r[locs] - 1.0
+    segmap = np.int64(r < 2)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[0].category == AstropyUserWarning
+        assert 'Total flux sum is negative.' in str(w[0].message)
+    assert morph.flag == 1
+
+
 def test_small_source():
     np.random.seed(1)
     ny, nx = 11, 11
