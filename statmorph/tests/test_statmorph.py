@@ -159,8 +159,8 @@ def test_insufficient_data():
     with catch_warnings(AstropyUserWarning) as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
-        assert w[-1].category == AstropyUserWarning
-        assert '[sersic] Not enough data for fit.' in str(w[-1].message)
+        assert w[-2].category == AstropyUserWarning
+        assert '[sersic] Not enough data for fit.' in str(w[-2].message)
     assert morph.flag == 1
 
 

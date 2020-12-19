@@ -1391,7 +1391,7 @@ class SourceMorphology(object):
                         return boxslice
 
             # If we got here, a skybox of the given size was not found.
-            if cur_skybox_size <= 1:
+            if cur_skybox_size <= 2:
                 warnings.warn('[skybox] Skybox not found.', AstropyUserWarning)
                 self.flag = 1
                 return slice(0, 0), slice(0, 0)
