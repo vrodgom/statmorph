@@ -941,7 +941,9 @@ class SourceMorphology(object):
 
         if circ_aperture_mean_flux == 0:
             warnings.warn('[rpetro_circ] Mean flux is zero.', AstropyUserWarning)
-            ratio = 1.0
+            # If flux within annulus is also zero (e.g. beyond the image
+            # boundaries), return zero. Otherwise return 1.0:
+            ratio = float(circ_annulus_mean_flux != 0)
             self.flag = 1
         else:
             ratio = circ_annulus_mean_flux / circ_aperture_mean_flux
@@ -1065,7 +1067,9 @@ class SourceMorphology(object):
 
         if ellip_aperture_mean_flux == 0:
             warnings.warn('[rpetro_ellip] Mean flux is zero.', AstropyUserWarning)
-            ratio = 1.0
+            # If flux within annulus is also zero (e.g. beyond the image
+            # boundaries), return zero. Otherwise return 1.0:
+            ratio = float(ellip_annulus_mean_flux != 0)
             self.flag = 1
         else:
             ratio = ellip_annulus_mean_flux / ellip_aperture_mean_flux
@@ -1311,6 +1315,29 @@ class SourceMorphology(object):
 
         return 0.139*self.m20 + 0.990*self.gini - 0.327
 
+    # @lazyproperty
+    # def sn_per_pixel(self):
+    #     """
+    #     Calculate the signal-to-noise per pixel using the Petrosian segmap.
+    #     """
+    #     weightmap = self._weightmap_stamp
+    #     if np.any(weightmap < 0):
+    #         warnings.warn('[sn_per_pixel] Some negative weightmap values.',
+    #                       AstropyUserWarning)
+    #         weightmap = np.abs(weightmap)
+    #
+    #     locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
+    #     pixelvals = self._cutout_stamp_maskzeroed[locs]
+    #     # The sky background noise is already included in the weightmap:
+    #     snp = np.mean(pixelvals / weightmap[locs])
+    #
+    #     if not np.isfinite(snp):
+    #         warnings.warn('Invalid sn_per_pixel.', AstropyUserWarning)
+    #         self.flag = 1
+    #         snp = -99.0  # invalid
+    #
+    #     return snp
+
     @lazyproperty
     def sn_per_pixel(self):
         """
@@ -1322,15 +1349,16 @@ class SourceMorphology(object):
                           AstropyUserWarning)
             weightmap = np.abs(weightmap)
 
-        locs = self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0)
-        pixelvals = self._cutout_stamp_maskzeroed[locs]
-        # The sky background noise is already included in the weightmap:
-        snp = np.mean(pixelvals / weightmap[locs])
-
-        if not np.isfinite(snp):
+        locs = (self._segmap_gini & (self._cutout_stamp_maskzeroed >= 0) &
+                (weightmap > 0))
+        if np.sum(locs) == 0:
             warnings.warn('Invalid sn_per_pixel.', AstropyUserWarning)
             self.flag = 1
             snp = -99.0  # invalid
+        else:
+            pixelvals = self._cutout_stamp_maskzeroed[locs]
+            # The sky background noise is already included in the weightmap:
+            snp = np.mean(pixelvals / weightmap[locs])
 
         return snp
 
