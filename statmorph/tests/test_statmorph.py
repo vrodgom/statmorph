@@ -262,6 +262,25 @@ def test_full_gini_segmap():
     assert morph.flag == 1
 
 
+def test_merger():
+    """
+    Test a "merger" scenario. This manages to produce different Gini
+    and MID segmaps, as well as a failed Sersic fit.
+    """
+    label = 1
+    ny, nx = 25, 25
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-(x-8)**2/4 - (y-12)**2)
+    image += np.exp(-(x-16)**2/4 - (y-12)**2)
+    segmap = np.int64(np.abs(image) > 1e-3)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-1].category == AstropyUserWarning
+        assert 'Gini and MID segmaps are quite different.' in str(w[-1].message)
+    assert morph.flag == 1
+    assert morph.flag_sersic == 1
+
+
 class TestSourceMorphology(object):
     """
     Check measurements for a test galaxy image + segmap + mask.
