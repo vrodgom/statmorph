@@ -230,7 +230,7 @@ def test_random_noise():
 
 def test_empty_gini_segmap():
     """
-    This pathological case results in an empty Gini segmap.
+    This pathological case results in an "empty" Gini segmap.
     """
     label = 1
     np.random.seed(0)
@@ -243,6 +243,22 @@ def test_empty_gini_segmap():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
         assert w[-1].category == AstropyUserWarning
         assert 'Segmaps are empty!' in str(w[-1].message)
+    assert morph.flag == 1
+
+
+def test_full_gini_segmap():
+    """
+    This produces a "full" Gini segmap.
+    """
+    label = 1
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = np.exp(-((x - nx // 2) ** 2 + (y - ny // 2) ** 2) / 50)
+    segmap = np.int64(image > 0.5)
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-3].category == AstropyUserWarning
+        assert 'Full Gini segmap!' in str(w[-3].message)
     assert morph.flag == 1
 
 
