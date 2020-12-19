@@ -1525,11 +1525,7 @@ class SourceMorphology(object):
             a_out = self.rmax_ellip
             b_out = a_out / self.elongation_asymmetry
             theta = self.orientation_asymmetry
-            if np.isnan(a_in) or np.isnan(a_out) or (a_in <= 0) or (a_out <= 0):
-                warnings.warn('[outer_asym] Invalid annulus dimensions.',
-                              AstropyUserWarning)
-                self.flag = 1
-                return -99.0  # invalid
+            assert (a_in > 0) & (a_out > 0)
             ap = photutils.EllipticalAnnulus(center, a_in, a_out, b_out, theta=theta)
         elif kind == 'shape':
             if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
