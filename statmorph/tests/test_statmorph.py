@@ -228,6 +228,24 @@ def test_random_noise():
     assert morph.flag == 1
 
 
+def test_empty_gini_segmap():
+    """
+    This pathological case results in an empty Gini segmap.
+    """
+    label = 1
+    np.random.seed(0)
+    ny, nx = 11, 11
+    y, x = np.mgrid[0:ny, 0:nx]
+    image = x - 9.0
+    segmap = image > 0
+    image += 0.1 * np.random.standard_normal(size=(ny, nx))
+    with catch_warnings(AstropyUserWarning) as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        assert w[-1].category == AstropyUserWarning
+        assert 'Segmaps are empty!' in str(w[-1].message)
+    assert morph.flag == 1
+
+
 class TestSourceMorphology(object):
     """
     Check measurements for a test galaxy image + segmap + mask.
