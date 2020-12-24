@@ -12,9 +12,14 @@ statmorph
 .. ~ (Freeman et al. 2013), and the shape asymmetry index (Pawlik et al. 2016).
 .. ~ The code also performs single-component Sérsic fits.
 
-**statmorph** is a Python package for calculating non-parametric morphological
-diagnostics of galaxy images (e.g., Gini-:math:`M_{20}` and CAS statistics),
-as well as fitting 2D Sérsic profiles.
+.. ~ .. raw:: html
+
+.. ~     <object data="_static/banner.svg" type="image/svg+xml" width="500"></object>
+
+**statmorph** is an
+`affiliated package of Astropy <https://www.astropy.org/affiliated/index.html>`_
+for calculating non-parametric morphological diagnostics of galaxy images
+(e.g., Gini-:math:`M_{20}` and CAS statistics), as well as fitting 2D Sérsic profiles.
 
 .. toctree::
    :maxdepth: 2

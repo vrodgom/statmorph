@@ -11,7 +11,6 @@ plots/*
 
 # Documentation
 docs/_build/*
-docs/_static/*
 docs/_templates/*
 docs/notebooks/.ipynb_checkpoints/*
 
