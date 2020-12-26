@@ -278,7 +278,6 @@ def test_merger():
         assert w[-1].category == AstropyUserWarning
         assert 'Gini and MID segmaps are quite different.' in str(w[-1].message)
     assert morph.flag == 1
-    assert morph.flag_sersic == 1
 
 
 class TestSourceMorphology(object):
