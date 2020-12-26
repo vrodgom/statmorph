@@ -2021,7 +2021,7 @@ class SourceMorphology(object):
         Returns a labeled array indicating regions around local maxima.
         """
         peaks = skimage.feature.peak_local_max(
-            self._cutout_mid_smooth, indices=True, num_peaks=np.inf)
+            self._cutout_mid_smooth, num_peaks=np.inf)
         num_peaks = peaks.shape[0]
         # The zero label is reserved for the background:
         peak_labels = np.arange(1, num_peaks+1, dtype=np.int64)
@@ -2486,7 +2486,7 @@ def source_morphology(image, segmap, **kwargs):
 
     See Also
     --------
-    `SourceMorphology` : Class to measure morphological parameters.
+    SourceMorphology : Class to measure morphological parameters.
 
     Examples
     --------
