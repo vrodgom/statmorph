@@ -34,4 +34,5 @@ setup(
                       'scikit-image>=0.14',
                       'astropy>=2.0',
                       'photutils>=0.7'],
+    python_requires='>=3.7',
 )
