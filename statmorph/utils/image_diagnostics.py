@@ -7,12 +7,6 @@ debugging and/or examining the morphology of a source in detail.
 
 import numpy as np
 import sys
-if 'matplotlib' not in sys.modules:
-    import matplotlib
-    matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.colors
-import matplotlib.cm
 import skimage.transform
 import statmorph
 from astropy.visualization import simple_norm
@@ -41,6 +35,13 @@ def make_figure(morph):
         The figure.
 
     """
+    if 'matplotlib' not in sys.modules:
+        import matplotlib
+        matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import matplotlib.colors
+    import matplotlib.cm
+
     if not isinstance(morph, statmorph.SourceMorphology):
         raise TypeError('Input must be of type SourceMorphology.')
 

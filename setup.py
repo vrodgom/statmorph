@@ -35,4 +35,6 @@ setup(
                       'astropy>=2.0',
                       'photutils>=0.7'],
     python_requires='>=3.7',
+    extras_require={
+        'matplotlib': ['matplotlib>=3.0']},
 )
