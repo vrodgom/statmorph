@@ -35,9 +35,6 @@ def make_figure(morph):
         The figure.
 
     """
-    if 'matplotlib' not in sys.modules:
-        import matplotlib
-        matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import matplotlib.colors
     import matplotlib.cm
