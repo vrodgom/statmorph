@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+  pull_request:
   schedule:
     # run every Sunday (0th day) at 12:00 UTC (syntax: m h * * day)
     - cron: '0 12 * * 0'
