@@ -80,13 +80,13 @@ def make_figure(morph):
     ax.imshow(image, cmap='gray', origin='lower',
               norm=simple_norm(image, stretch='log', log_a=10000))
     ax.plot(xc, yc, 'go', markersize=5, label='Centroid')
-    R = float(nx**2 + ny**2)
+    R = np.sqrt(nx**2 + ny**2)
     theta = morph.orientation_centroid
     x0, x1 = xc - R*np.cos(theta), xc + R*np.cos(theta)
     y0, y1 = yc - R*np.sin(theta), yc + R*np.sin(theta)
     ax.plot([x0, x1], [y0, y1], 'g--', lw=1.5, label='Major Axis (Centroid)')
     ax.plot(xca, yca, 'bo', markersize=5, label='Asym. Center')
-    R = float(nx**2 + ny**2)
+    R = np.sqrt(nx**2 + ny**2)
     theta = morph.orientation_asymmetry
     x0, x1 = xca - R*np.cos(theta), xca + R*np.cos(theta)
     y0, y1 = yca - R*np.sin(theta), yca + R*np.sin(theta)
@@ -126,7 +126,7 @@ def make_figure(morph):
     ax.imshow(sersic_model, cmap='gray', origin='lower',
               norm=simple_norm(image, stretch='log', log_a=10000))
     ax.plot(xcs, ycs, 'ro', markersize=5, label='Sérsic Center')
-    R = float(nx**2 + ny**2)
+    R = np.sqrt(nx**2 + ny**2)
     theta = morph.sersic_theta
     x0, x1 = xcs - R*np.cos(theta), xcs + R*np.cos(theta)
     y0, y1 = ycs - R*np.sin(theta), ycs + R*np.sin(theta)
