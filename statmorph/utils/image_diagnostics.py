@@ -2,7 +2,7 @@
 This file defines the `make_figure` function, which can be useful for
 debugging and/or examining the morphology of a source in detail.
 """
-# Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
+# Author: Vicente Rodriguez-Gomez <vrodgom.astro@gmail.com>
 # Licensed under a 3-Clause BSD License.
 
 import numpy as np

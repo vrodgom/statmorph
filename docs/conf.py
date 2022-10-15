@@ -18,7 +18,7 @@
 # -- Project information -----------------------------------------------------
 
 project = 'statmorph'
-copyright = '2017-2021, Vicente Rodriguez-Gomez'
+copyright = '2017-2022, Vicente Rodriguez-Gomez'
 author = 'Vicente Rodriguez-Gomez'
 
 # The full version, including alpha/beta/rc tags

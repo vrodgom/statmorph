@@ -3,7 +3,7 @@ Some trivial tests for the ``image_diagnostics`` plotting utility.
 Usually these are skipped, since Matplotlib is not listed in the
 statmorph requirements.
 """
-# Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
+# Author: Vicente Rodriguez-Gomez <vrodgom.astro@gmail.com>
 # Licensed under a 3-Clause BSD License.
 import numpy as np
 import os

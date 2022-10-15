@@ -2,7 +2,7 @@
 Python code for calculating non-parametric morphological diagnostics
 of galaxy images.
 """
-# Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
+# Author: Vicente Rodriguez-Gomez <vrodgom.astro@gmail.com>
 # Licensed under a 3-Clause BSD License.
 from pkg_resources import parse_version
 import warnings

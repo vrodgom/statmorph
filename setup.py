@@ -16,7 +16,7 @@ setup(
     long_description=long_description,
     url='https://github.com/vrodgom/statmorph',
     author='Vicente Rodriguez-Gomez',
-    author_email='v.rodriguez@irya.unam.mx',
+    author_email='vrodgom.astro@gmail.com',
     license='BSD',
     classifiers=[
         'Development Status :: 4 - Beta',

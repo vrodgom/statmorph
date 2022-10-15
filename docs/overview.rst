@@ -25,7 +25,7 @@ originally written by Jennifer Lotz and Greg Snyder.
 
 **Authors**
 
-- Vicente Rodriguez-Gomez (v.rodriguez [at] irya.unam.mx)
+- Vicente Rodriguez-Gomez (vrodgom.astro@gmail.com)
 - Jennifer Lotz
 - Greg Snyder
 

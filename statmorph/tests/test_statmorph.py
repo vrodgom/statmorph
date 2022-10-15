@@ -1,7 +1,7 @@
 """
 Tests for the statmorph morphology package.
 """
-# Author: Vicente Rodriguez-Gomez <v.rodriguez@irya.unam.mx>
+# Author: Vicente Rodriguez-Gomez <vrodgom.astro@gmail.com>
 # Licensed under a 3-Clause BSD License.
 import numpy as np
 import os
