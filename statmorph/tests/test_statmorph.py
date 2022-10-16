@@ -10,7 +10,6 @@ import statmorph
 from astropy.modeling import models
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyUserWarning
-from astropy.tests.helper import catch_warnings
 from numpy.testing import assert_allclose
 
 __all__ = ['runall']
@@ -68,13 +67,13 @@ def test_missing_arguments():
 
 def test_catastrophic():
     label = 1
-    image = np.full((3, 3), -1.0)
-    segmap = np.full((3, 3), label)
-    gain = 1.0
-    with catch_warnings(AstropyUserWarning) as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=gain)
-        assert w[0].category == AstropyUserWarning
-        assert 'Total flux is nonpositive.' in str(w[0].message)
+    image = np.full((3, 3), -1.0, dtype=np.float64)
+    segmap = np.full((3, 3), label, dtype=np.int64)
+    with pytest.warns() as w:
+        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+    assert len(w) == 1
+    assert w[0].category == AstropyUserWarning
+    assert 'Total flux is nonpositive.' in str(w[0].message)
     assert morph.flag_catastrophic == 1
 
 
@@ -86,11 +85,11 @@ def test_masked_centroid():
     segmap = np.int64(image > 1e-3)
     mask = np.zeros((ny, nx), dtype=np.bool8)
     mask[5, 5] = True
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            mask=mask)
-        assert w[0].category == AstropyUserWarning
-        assert 'Centroid is masked.' in str(w[0].message)
+    assert w[0].category == AstropyUserWarning
+    assert 'Centroid is masked.' in str(w[0].message)
     assert morph.flag == 1
 
 
@@ -106,11 +105,11 @@ def test_bright_pixel():
     image[7, 7] = 1.0
     segmap = np.int64(image > 1e-3)
     segmap[5, 5] = 0
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
-        assert w[0].category == AstropyUserWarning
-        assert 'Adding brightest pixel to segmap.' in str(w[0].message)
+    assert w[0].category == AstropyUserWarning
+    assert 'Adding brightest pixel to segmap.' in str(w[0].message)
     assert morph.flag == 1
 
 
@@ -123,10 +122,10 @@ def test_negative_source():
     locs = r > 0
     image[locs] = 2.0/r[locs] - 1.0
     segmap = np.int64(r < 2)
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-        assert w[0].category == AstropyUserWarning
-        assert 'Total flux sum is negative.' in str(w[0].message)
+    assert w[0].category == AstropyUserWarning
+    assert 'Total flux sum is negative.' in str(w[0].message)
     assert morph.flag == 1
 
 
@@ -139,11 +138,11 @@ def test_tiny_source():
     image = np.zeros((5, 5), dtype=np.float64)
     image[2, 2] = 1.0
     segmap = np.int64(image)
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
-        assert w[0].category == AstropyUserWarning
-        assert 'Nonpositive second moment.' in str(w[0].message)
+    assert w[0].category == AstropyUserWarning
+    assert 'Nonpositive second moment.' in str(w[0].message)
     assert morph.flag == 1
 
 
@@ -156,11 +155,11 @@ def test_insufficient_data():
     image = np.zeros((2, 3), dtype=np.float64)
     image[:, 1] = 1.0
     segmap = np.int64(image)
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
-        assert w[-2].category == AstropyUserWarning
-        assert '[sersic] Not enough data for fit.' in str(w[-2].message)
+    assert w[-2].category == AstropyUserWarning
+    assert '[sersic] Not enough data for fit.' in str(w[-2].message)
     assert morph.flag == 1
 
 
@@ -172,11 +171,11 @@ def test_asymmetric():
     label = 1
     y, x = np.mgrid[0:25, 0:25]
     image = x - 20
-    segmap = image > 0
-    with catch_warnings(AstropyUserWarning) as w:
+    segmap = np.int64(image > 0)
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-        assert w[0].category == AstropyUserWarning
-        assert 'Minimizer tried to exit bounds.' in str(w[0].message)
+    assert w[0].category == AstropyUserWarning
+    assert 'Minimizer tried to exit bounds.' in str(w[0].message)
     assert morph.flag == 1
     assert morph._use_centroid
 
@@ -189,11 +188,11 @@ def test_small_source():
     image += 0.001 * np.random.standard_normal(size=(ny, nx))
     segmap = np.int64(image > 0.1)
     label = 1
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
-        assert w[-1].category == AstropyUserWarning
-        assert 'Single clump!' in str(w[-1].message)
+    assert w[-1].category == AstropyUserWarning
+    assert 'Single clump!' in str(w[-1].message)
     assert morph.flag == 0
     assert morph.multimode == 0
     assert morph.intensity == 0
@@ -205,11 +204,11 @@ def test_full_segmap():
     image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
-        assert w[-1].category == AstropyUserWarning
-        assert 'Image is not background-subtracted.' in str(w[-1].message)
+    assert w[-1].category == AstropyUserWarning
+    assert 'Image is not background-subtracted.' in str(w[-1].message)
     assert morph.flag == 1
     assert morph._slice_skybox == (slice(0, 0), slice(0, 0))
 
@@ -221,10 +220,10 @@ def test_random_noise():
     weightmap = 0.01 * np.random.standard_normal(size=(ny, nx))
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label,
                                            weightmap=weightmap)
-        assert w[-1].category == AstropyUserWarning
+    assert w[-1].category == AstropyUserWarning
     assert morph.flag == 1
 
 
@@ -237,12 +236,12 @@ def test_empty_gini_segmap():
     ny, nx = 11, 11
     y, x = np.mgrid[0:ny, 0:nx]
     image = x - 9.0
-    segmap = image > 0
+    segmap = np.int64(image > 0)
     image += 0.1 * np.random.standard_normal(size=(ny, nx))
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-        assert w[-1].category == AstropyUserWarning
-        assert 'Segmaps are empty!' in str(w[-1].message)
+    assert w[-1].category == AstropyUserWarning
+    assert 'Segmaps are empty!' in str(w[-1].message)
     assert morph.flag == 1
 
 
@@ -255,10 +254,10 @@ def test_full_gini_segmap():
     y, x = np.mgrid[0:ny, 0:nx]
     image = np.exp(-((x - nx // 2) ** 2 + (y - ny // 2) ** 2) / 50)
     segmap = np.int64(image > 0.5)
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-        assert w[-3].category == AstropyUserWarning
-        assert 'Full Gini segmap!' in str(w[-3].message)
+    assert w[-3].category == AstropyUserWarning
+    assert 'Full Gini segmap!' in str(w[-3].message)
     assert morph.flag == 1
 
 
@@ -273,10 +272,10 @@ def test_merger():
     image = np.exp(-(x-8)**2/4 - (y-12)**2)
     image += np.exp(-(x-16)**2/4 - (y-12)**2)
     segmap = np.int64(np.abs(image) > 1e-3)
-    with catch_warnings(AstropyUserWarning) as w:
+    with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-        assert w[-1].category == AstropyUserWarning
-        assert 'Gini and MID segmaps are quite different.' in str(w[-1].message)
+    assert w[-1].category == AstropyUserWarning
+    assert 'Gini and MID segmaps are quite different.' in str(w[-1].message)
     assert morph.flag == 1
 
 
