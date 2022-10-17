@@ -970,33 +970,31 @@ class SourceMorphology(object):
         r_inner = self._annulus_width
         r_outer = self._diagonal_distance
         assert r_inner < r_outer
-        dr = (r_outer - r_inner) / float(npoints-1)
         r_min, r_max = None, None
-        r = r_inner  # initial value
-        while True:
-            if r >= r_outer:
-                warnings.warn('[rpetro_circ] rpetro larger than cutout.',
-                              AstropyUserWarning)
-                self.flag = 1
+        for r in np.linspace(r_inner, r_outer, npoints):
             curval = self._petrosian_function_circ(r, center)
-            if curval >= 0:
+            if curval == 0:
+                warnings.warn('[rpetro_circ] Found rpetro by chance?',
+                              AstropyUserWarning)
+                return r
+            elif curval > 0:  # we have not reached rpetro yet
                 r_min = r
-            elif curval < 0:
+            else:  # we are beyond rpetro
                 if r_min is None:
-                    warnings.warn('[rpetro_circ] r_min is not defined yet.',
+                    warnings.warn('rpetro_circ < annulus_width! ' +
+                                  'Setting rpetro_circ = annulus_width.',
                                   AstropyUserWarning)
                     self.flag = 1
-                    if r >= r_outer:
-                        # If r_min is still undefined at this point, then
-                        # rpetro must be smaller than the annulus width.
-                        warnings.warn('rpetro_circ < annulus_width! ' +
-                                      'Setting rpetro_circ = annulus_width.',
-                                      AstropyUserWarning)
-                        return r_inner
-                else:
-                    r_max = r
-                    break
-            r += dr
+                    return r_inner
+                r_max = r
+                break
+
+        assert r_min is not None
+        if r_max is None:
+            warnings.warn('[rpetro_circ] rpetro too large.',
+                          AstropyUserWarning)
+            self.flag = 1
+            r_max = r_outer
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, args=(center,), xtol=1e-6)
@@ -1095,35 +1093,33 @@ class SourceMorphology(object):
         # Find appropriate range for root finder
         npoints = 100
         a_inner = self._annulus_width
-        a_outer = self._diagonal_distance
+        a_outer = self._diagonal_distance * elongation
         assert a_inner < a_outer
-        da = (a_outer - a_inner) / float(npoints-1)
         a_min, a_max = None, None
-        a = a_inner  # initial value
-        while True:
-            if a >= a_outer:
-                warnings.warn('[rpetro_ellip] rpetro larger than cutout.',
-                              AstropyUserWarning)
-                self.flag = 1
+        for a in np.linspace(a_inner, a_outer, npoints):
             curval = self._petrosian_function_ellip(a, center, elongation, theta)
-            if curval >= 0:
+            if curval == 0:
+                warnings.warn('[rpetro_ellip] Found rpetro by chance?',
+                              AstropyUserWarning)
+                return a
+            elif curval > 0:  # we have not reached rpetro yet
                 a_min = a
-            elif curval < 0:
+            else:  # we are beyond rpetro
                 if a_min is None:
-                    warnings.warn('[rpetro_ellip] a_min is not defined yet.',
+                    warnings.warn('rpetro_ellip < annulus_width! ' +
+                                  'Setting rpetro_ellip = annulus_width.',
                                   AstropyUserWarning)
                     self.flag = 1
-                    if a >= a_outer:
-                        # If a_min is still undefined at this point, then
-                        # rpetro must be smaller than the annulus width.
-                        warnings.warn('rpetro_ellip < annulus_width! ' +
-                                      'Setting rpetro_ellip = annulus_width.',
-                                      AstropyUserWarning)
-                        return a_inner
-                else:
-                    a_max = a
-                    break
-            a += da
+                    return a_inner
+                a_max = a
+                break
+
+        assert a_min is not None
+        if a_max is None:
+            warnings.warn('[rpetro_ellip] rpetro too large.',
+                          AstropyUserWarning)
+            self.flag = 1
+            a_max = a_outer
 
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
                                   args=(center, elongation, theta,), xtol=1e-6)
