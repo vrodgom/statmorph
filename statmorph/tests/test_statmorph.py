@@ -83,7 +83,7 @@ def test_masked_centroid():
     y, x = np.mgrid[0:ny, 0:nx]
     image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
     segmap = np.int64(image > 1e-3)
-    mask = np.zeros((ny, nx), dtype=np.bool8)
+    mask = np.zeros((ny, nx), dtype=np.bool_)
     mask[5, 5] = True
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
@@ -345,7 +345,7 @@ class TestSourceMorphology(object):
         with fits.open('%s/data/slice.fits' % (curdir,)) as hdulist:
             self.image = hdulist[0].data
             self.segmap = hdulist[1].data
-            self.mask = np.bool8(hdulist[2].data)
+            self.mask = np.bool_(hdulist[2].data)
         self.gain = 1.0
 
     def test_no_psf(self, print_values=False):

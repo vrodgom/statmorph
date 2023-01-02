@@ -415,7 +415,7 @@ class SourceMorphology(object):
         assert self._segmap.data.shape == self._image.shape
         if self._mask is not None:
             assert self._mask.shape == self._image.shape
-            assert self._mask.dtype == np.bool8
+            assert self._mask.dtype == np.bool_
         if self._weightmap is not None:
             assert self._weightmap.shape == self._image.shape
 
@@ -810,7 +810,7 @@ class SourceMorphology(object):
         Flag badpixels (outliers).
         """
         self.num_badpixels = -1
-        badpixels = np.zeros((self.ny_stamp, self.nx_stamp), dtype=np.bool8)
+        badpixels = np.zeros((self.ny_stamp, self.nx_stamp), dtype=np.bool_)
         if self._n_sigma_outlier > 0:
             badpixels = self._get_badpixels(self._image[self._slice_stamp])
             self.num_badpixels = np.sum(badpixels)
@@ -1372,7 +1372,7 @@ class SourceMorphology(object):
         """
         segmap = self._segmap.data[self._slice_stamp]
         ny, nx = segmap.shape
-        mask = np.zeros(segmap.shape, dtype=np.bool8)
+        mask = np.zeros(segmap.shape, dtype=np.bool_)
         if self._mask is not None:
             mask = self._mask[self._slice_stamp]
 
@@ -2192,7 +2192,7 @@ class SourceMorphology(object):
             if self._verbose:
                 warnings.warn('[shape_asym] Using skybox for background.',
                               AstropyUserWarning)
-            total_mask = np.ones((ny, nx), dtype=np.bool8)
+            total_mask = np.ones((ny, nx), dtype=np.bool_)
             total_mask[self._slice_skybox] = False
             # However, if skybox is undefined, there is nothing to do.
             if np.sum(~total_mask) == 0:
