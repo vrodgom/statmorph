@@ -25,7 +25,7 @@ import photutils
 __all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
            '__version__']
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 
 # A list of all the quantities that are calculated by SourceMorphology:
 _quantity_names = [
