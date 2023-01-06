@@ -22,7 +22,7 @@ copyright = '2017-2023, Vicente Rodriguez-Gomez'
 author = 'Vicente Rodriguez-Gomez'
 
 # The full version, including alpha/beta/rc tags
-release = '0.4.1'
+release = '0.5.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -58,6 +58,8 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '.ipynb_checkpoints']
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
 
+## Uncomment to allow errors in the tutorial notebook:
+#nbsphinx_allow_errors = True
 
 # -- Options for HTML output -------------------------------------------------
 

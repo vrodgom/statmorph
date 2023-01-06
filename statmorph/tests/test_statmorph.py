@@ -74,7 +74,7 @@ def test_catastrophic():
     assert len(w) == 1
     assert w[0].category == AstropyUserWarning
     assert 'Total flux is nonpositive.' in str(w[0].message)
-    assert morph.flag_catastrophic == 1
+    assert morph.flag == 4
 
 
 def test_masked_centroid():
@@ -90,7 +90,7 @@ def test_masked_centroid():
                                            mask=mask)
     assert w[0].category == AstropyUserWarning
     assert 'Centroid is masked.' in str(w[0].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_bright_pixel():
@@ -110,7 +110,7 @@ def test_bright_pixel():
                                            n_sigma_outlier=-1)
     assert w[0].category == AstropyUserWarning
     assert 'Adding brightest pixel to segmap.' in str(w[0].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_negative_source():
@@ -126,7 +126,7 @@ def test_negative_source():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[0].category == AstropyUserWarning
     assert 'Total flux sum is negative.' in str(w[0].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_tiny_source():
@@ -143,7 +143,7 @@ def test_tiny_source():
                                            n_sigma_outlier=-1)
     assert w[0].category == AstropyUserWarning
     assert 'Nonpositive second moment.' in str(w[0].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_insufficient_data():
@@ -160,7 +160,7 @@ def test_insufficient_data():
                                            n_sigma_outlier=-1)
     assert w[-2].category == AstropyUserWarning
     assert '[sersic] Not enough data for fit.' in str(w[-2].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_asymmetric():
@@ -176,7 +176,7 @@ def test_asymmetric():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[0].category == AstropyUserWarning
     assert 'Minimizer tried to exit bounds.' in str(w[0].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
     assert morph._use_centroid
 
 
@@ -209,7 +209,7 @@ def test_full_segmap():
                                            verbose=True)
     assert w[-1].category == AstropyUserWarning
     assert 'Image is not background-subtracted.' in str(w[-1].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
     assert morph._slice_skybox == (slice(0, 0), slice(0, 0))
 
 
@@ -224,7 +224,7 @@ def test_random_noise():
         morph = statmorph.SourceMorphology(image, segmap, label,
                                            weightmap=weightmap)
     assert w[-1].category == AstropyUserWarning
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_empty_gini_segmap():
@@ -242,7 +242,7 @@ def test_empty_gini_segmap():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[-1].category == AstropyUserWarning
     assert 'Segmaps are empty!' in str(w[-1].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_full_gini_segmap():
@@ -258,7 +258,7 @@ def test_full_gini_segmap():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[-3].category == AstropyUserWarning
     assert 'Full Gini segmap!' in str(w[-3].message)
-    assert morph.flag == 1
+    assert morph.flag == 2
 
 
 def test_merger():
@@ -273,7 +273,8 @@ def test_merger():
     image += np.exp(-(x-16)**2/4 - (y-12)**2)
     segmap = np.int64(np.abs(image) > 1e-3)
     with pytest.warns() as w:
-        morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
+        morph = statmorph.SourceMorphology(
+            image, segmap, label, gain=1.0, verbose=True)
     assert w[-1].category == AstropyUserWarning
     assert 'Gini and MID segmaps are quite different.' in str(w[-1].message)
     assert morph.flag == 1

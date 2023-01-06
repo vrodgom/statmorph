@@ -42,7 +42,8 @@ def make_figure(morph):
     if not isinstance(morph, statmorph.SourceMorphology):
         raise TypeError('Input must be of type SourceMorphology.')
 
-    assert morph.flag_catastrophic == 0  # some cases are not even worth plotting
+    if morph.flag == 4:
+        raise Exception('Catastrophic flag (not worth plotting)')
 
     # I'm tired of dealing with plt.add_subplot, plt.subplots, plg.GridSpec,
     # plt.subplot2grid, etc. and never getting the vertical and horizontal

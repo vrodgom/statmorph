@@ -25,7 +25,7 @@ import photutils
 __all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
            '__version__']
 
-__version__ = '0.4.1'
+__version__ = '0.5.0'
 
 # A list of all the quantities that are calculated by SourceMorphology:
 _quantity_names = [
@@ -133,7 +133,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     Return the radius (in pixels) of a concentric circle that
     contains a given fraction of the light within ``r_total``.
     """
-    flag = 0  # flag=1 indicates a problem
+    flag = 0
 
     ap_total = photutils.aperture.CircularAperture(center, r_total)
 
@@ -141,7 +141,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     assert total_sum != 0
     if total_sum < 0:
         warnings.warn('[r_circ] Total flux sum is negative.', AstropyUserWarning)
-        flag = 1
+        flag = 2
         total_sum = np.abs(total_sum)
 
     # Find appropriate range for root finder
@@ -189,7 +189,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     contains a given fraction of the light within a larger ellipse of
     semimajor axis ``a_total``.
     """
-    flag = 0  # flag=1 indicates a problem
+    flag = 0
 
     b_total = a_total / elongation
     ap_total = photutils.aperture.EllipticalAperture(
@@ -199,7 +199,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     assert total_sum != 0
     if total_sum < 0:
         warnings.warn('[r_ellip] Total flux sum is negative.', AstropyUserWarning)
-        flag = 1
+        flag = 2
         total_sum = np.abs(total_sum)
 
     # Find appropriate range for root finder
@@ -358,12 +358,12 @@ class SourceMorphology(object):
         The maximum number of iterations during the Sersic profile
         fitting.
     segmap_overlap_ratio : float, optional
-        The minimum ratio between the area of the intersection of
-        all 3 segmaps and the area of the largest segmap in order to
-        have a good measurement.
+        The minimum ratio (in order to have a "good" measurement)
+        between the area of the intersection of the Gini and MID segmaps
+        and the area of the largest of these two segmaps.
     verbose : bool, optional
         If ``True``, this prints various minor warnings (which do not
-        set off the "bad measurement" flag) during the calculations.
+        result in "bad" measurements) during the calculations.
         The default value is ``False``.
 
     References
@@ -427,9 +427,8 @@ class SourceMorphology(object):
             self._psf = self._psf / np.sum(self._psf)
 
         # These flags will be modified during the calculations:
-        self.flag = 0  # attempts to flag bad measurements
-        self.flag_sersic = 0  # attempts to flag bad Sersic fits
-        self.flag_catastrophic = 0  # this one is reserved for really bad cases
+        self.flag = 0  # attempts to flag bad measurements (0-4)
+        self.flag_sersic = 0  # attempts to flag bad Sersic fits (0 or 1)
 
         # If something goes wrong, use centroid instead of asymmetry center
         # (better performance in some pathological cases, e.g. GOODS-S 32143):
@@ -452,7 +451,7 @@ class SourceMorphology(object):
         ic, jc = int(np.round(self._yc_stamp)), int(np.round(self._xc_stamp))
         if self._cutout_stamp_maskzeroed[ic, jc] == 0:
             warnings.warn('Centroid is masked.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         # Position of the source's brightest pixel relative to the stamp cutout:
         maxval = np.max(self._cutout_stamp_maskzeroed_no_bg)
@@ -468,12 +467,12 @@ class SourceMorphology(object):
         # For simplicity, evaluate all "lazy" properties at once:
         self._calculate_morphology()
 
-        # Check if image is background-subtracted; set flag=1 if not.
+        # Check if image is background-subtracted; set flag = 2 (bad) if not.
         if np.abs(self.sky_mean) > self.sky_sigma:
             warnings.warn('Image is not background-subtracted.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
-        # Check segmaps and set flag=1 if they are very different
+        # Check segmaps and set flag = 1 (suspect) if they are very different
         self._check_segmaps()
 
         # Save runtime
@@ -522,9 +521,8 @@ class SourceMorphology(object):
             setattr(self, q, -99.0)
         self.nx_stamp = -99
         self.ny_stamp = -99
-        self.flag = 1
+        self.flag = 4  # catastrophic
         self.flag_sersic = 1
-        self.flag_catastrophic = 1
         self.runtime = -99.0
 
     def _calculate_morphology(self):
@@ -537,7 +535,7 @@ class SourceMorphology(object):
 
     def _check_segmaps(self):
         """
-        Compare Gini segmap and MID segmap; set flag=1 if they are
+        Compare Gini segmap and MID segmap; set flag = 1 (suspect) if they are
         very different from each other.
         """
         area_max = max(np.sum(self._segmap_gini),
@@ -546,14 +544,15 @@ class SourceMorphology(object):
                               self._segmap_mid)
         if area_max == 0:
             warnings.warn('Segmaps are empty!', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2  # bad
             return
 
         area_ratio = area_overlap / float(area_max)
         if area_ratio < self._segmap_overlap_ratio:
-            warnings.warn('Gini and MID segmaps are quite different.',
-                          AstropyUserWarning)
-            self.flag = 1
+            if self._verbose:
+                warnings.warn('Gini and MID segmaps are quite different.',
+                              AstropyUserWarning)
+            self.flag = max(self.flag, 1)  # suspect
 
     @lazyproperty
     def _centroid(self):
@@ -575,7 +574,7 @@ class SourceMorphology(object):
                           'postage stamp (bad!).', AstropyUserWarning)
             yc = ny / 2.0
             xc = nx / 2.0
-            self.flag = 1
+            self.flag = 2
 
         return np.array([xc, yc])
 
@@ -616,7 +615,7 @@ class SourceMorphology(object):
         # but we indicate that there's something wrong with the data.
         if (covariance[0, 0] <= 0) or (covariance[1, 1] <= 0):
             warnings.warn('Nonpositive second moment.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         # Modify covariance matrix in case of "infinitely thin" sources
         # by iteratively increasing the diagonal elements (see SExtractor
@@ -645,7 +644,7 @@ class SourceMorphology(object):
         # the SExtractor-like regularization routine).
         if np.any(eigvals < 0):
             warnings.warn('Some negative eigenvalues.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         return eigvals
 
@@ -807,7 +806,7 @@ class SourceMorphology(object):
     @lazyproperty
     def _mask_stamp_badpixels(self):
         """
-        Flag badpixels (outliers).
+        Flag bad pixels (outliers).
         """
         self.num_badpixels = -1
         badpixels = np.zeros((self.ny_stamp, self.nx_stamp), dtype=np.bool_)
@@ -944,7 +943,7 @@ class SourceMorphology(object):
             # If flux within annulus is also zero (e.g. beyond the image
             # boundaries), return zero. Otherwise return 1.0:
             ratio = float(circ_annulus_mean_flux != 0)
-            self.flag = 1
+            self.flag = 2
         else:
             ratio = circ_annulus_mean_flux / circ_aperture_mean_flux
 
@@ -984,7 +983,7 @@ class SourceMorphology(object):
                     warnings.warn('rpetro_circ < annulus_width! ' +
                                   'Setting rpetro_circ = annulus_width.',
                                   AstropyUserWarning)
-                    self.flag = 1
+                    self.flag = 2
                     return r_inner
                 r_max = r
                 break
@@ -993,7 +992,7 @@ class SourceMorphology(object):
         if r_max is None:
             warnings.warn('[rpetro_circ] rpetro too large.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             r_max = r_outer
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
@@ -1068,7 +1067,7 @@ class SourceMorphology(object):
             # If flux within annulus is also zero (e.g. beyond the image
             # boundaries), return zero. Otherwise return 1.0:
             ratio = float(ellip_annulus_mean_flux != 0)
-            self.flag = 1
+            self.flag = 2
         else:
             ratio = ellip_annulus_mean_flux / ellip_aperture_mean_flux
 
@@ -1109,7 +1108,7 @@ class SourceMorphology(object):
                     warnings.warn('rpetro_ellip < annulus_width! ' +
                                   'Setting rpetro_ellip = annulus_width.',
                                   AstropyUserWarning)
-                    self.flag = 1
+                    self.flag = 2
                     return a_inner
                 a_max = a
                 break
@@ -1118,7 +1117,7 @@ class SourceMorphology(object):
         if a_max is None:
             warnings.warn('[rpetro_ellip] rpetro too large.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             a_max = a_outer
 
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
@@ -1188,7 +1187,7 @@ class SourceMorphology(object):
         if num_features == 0:
             warnings.warn('[segmap_gini] Empty Gini segmap!',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2  # bad
             return above_threshold
 
         # In other cases (e.g., object 110 from CANDELS/GOODS-S WFC/F160W),
@@ -1196,15 +1195,16 @@ class SourceMorphology(object):
         if np.sum(above_threshold) == cutout_smooth.size:
             warnings.warn('[segmap_gini] Full Gini segmap!',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2  # bad
             return above_threshold
 
-        # If more than one region, activate the "bad measurement" flag
-        # and only keep segment that contains the brightest pixel.
+        # If more than one region, set flag = 1 (suspect) and
+        # only keep the segment that contains the brightest pixel.
         if num_features > 1:
-            warnings.warn('[segmap_gini] Disjoint features in Gini segmap.',
-                          AstropyUserWarning)
-            self.flag = 1
+            if self._verbose:
+                warnings.warn('[segmap_gini] Disjoint features in Gini segmap.',
+                              AstropyUserWarning)
+            self.flag = max(self.flag, 1)  # suspect
             ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
             assert labeled_array[ic, jc] != 0
             segmap = labeled_array == labeled_array[ic, jc]
@@ -1226,8 +1226,7 @@ class SourceMorphology(object):
         if n <= 1 or np.sum(sorted_pixelvals) == 0:
             warnings.warn('[gini] Not enough data for Gini calculation.',
                           AstropyUserWarning)
-
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         indices = np.arange(1, n+1)  # start at i=1
@@ -1253,7 +1252,7 @@ class SourceMorphology(object):
         if M[0, 0] <= 0:
             warnings.warn('[deviation] Nonpositive flux within Gini segmap.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
@@ -1270,7 +1269,7 @@ class SourceMorphology(object):
             # This can happen when there are very few pixels.
             warnings.warn('[m20] Not enough data for M20 calculation.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
         threshold = sorted_pixelvals_20[0]
 
@@ -1282,7 +1281,7 @@ class SourceMorphology(object):
         if (second_moment_20 <= 0) | (second_moment_tot <= 0):
             warnings.warn('[m20] Negative second moment(s).',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             m20 = -99.0  # invalid
         else:
             m20 = np.log10(second_moment_20 / second_moment_tot)
@@ -1329,7 +1328,7 @@ class SourceMorphology(object):
     #
     #     if not np.isfinite(snp):
     #         warnings.warn('Invalid sn_per_pixel.', AstropyUserWarning)
-    #         self.flag = 1
+    #         self.flag = 2
     #         snp = -99.0  # invalid
     #
     #     return snp
@@ -1349,7 +1348,7 @@ class SourceMorphology(object):
                 (weightmap > 0))
         if np.sum(locs) == 0:
             warnings.warn('Invalid sn_per_pixel.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             snp = -99.0  # invalid
         else:
             pixelvals = self._cutout_stamp_maskzeroed[locs]
@@ -1389,7 +1388,7 @@ class SourceMorphology(object):
             # If we got here, a skybox of the given size was not found.
             if cur_skybox_size <= 2:
                 warnings.warn('[skybox] Skybox not found.', AstropyUserWarning)
-                self.flag = 1
+                self.flag = 2
                 return slice(0, 0), slice(0, 0)
             else:
                 cur_skybox_size //= 2
@@ -1404,7 +1403,7 @@ class SourceMorphology(object):
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            assert self.flag == 1
+            assert self.flag == 2
             return -99.0
 
         return np.mean(bkg)
@@ -1416,7 +1415,7 @@ class SourceMorphology(object):
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            assert self.flag == 1
+            assert self.flag == 2
             return -99.0
 
         return np.median(bkg)
@@ -1429,7 +1428,7 @@ class SourceMorphology(object):
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            assert self.flag == 1
+            assert self.flag == 2
             return -99.0
 
         return np.std(bkg)
@@ -1443,7 +1442,7 @@ class SourceMorphology(object):
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         bkg_180 = bkg[::-1, ::-1]
         if bkg.size == 0:
-            assert self.flag == 1
+            assert self.flag == 2
             return -99.0
 
         return np.sum(np.abs(bkg_180 - bkg)) / float(bkg.size)
@@ -1456,7 +1455,7 @@ class SourceMorphology(object):
         """
         bkg = self._cutout_stamp_maskzeroed[self._slice_skybox]
         if bkg.size == 0:
-            assert self.flag == 1
+            assert self.flag == 2
             return -99.0
 
         # If the smoothing "boxcar" is larger than the skybox itself,
@@ -1496,7 +1495,7 @@ class SourceMorphology(object):
         if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
             warnings.warn('[asym_center] Minimizer tried to exit bounds.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             self._use_centroid = True
             # Return high value to keep minimizer within range:
             return 100.0
@@ -1527,7 +1526,7 @@ class SourceMorphology(object):
             if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
                 warnings.warn('[shape_asym] Invalid rmax_circ value.',
                               AstropyUserWarning)
-                self.flag = 1
+                self.flag = 2
                 return -99.0  # invalid
             ap = photutils.aperture.CircularAperture(center, self.rmax_circ)
         else:
@@ -1540,7 +1539,7 @@ class SourceMorphology(object):
         if ap_abs_sum == 0.0:
             warnings.warn('[asymmetry_function] Zero flux sum.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         if kind == 'shape':
@@ -1566,8 +1565,9 @@ class SourceMorphology(object):
                                args=(self._cutout_stamp_maskzeroed, 'cas'),
                                xtol=1e-6, disp=False)
 
-        # Check if flag was activated by _asymmetry_function:
+        # Check if the bad measurement flag was set by _asymmetry_function:
         if self._use_centroid:
+            assert self.flag == 2
             warnings.warn('Using centroid instead of asymmetry center.',
                           AstropyUserWarning)
             center_asym = center_0
@@ -1577,7 +1577,7 @@ class SourceMorphology(object):
         if self._cutout_stamp_maskzeroed[ic, jc] == 0:
             warnings.warn('[asym_center] Asymmetry center is masked.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         return center_asym
 
@@ -1667,7 +1667,7 @@ class SourceMorphology(object):
         if np.isnan(r) or (r <= 0.0):
             warnings.warn('[CAS] Invalid radius_at_fraction_of_total.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             r = -99.0  # invalid
 
         return r
@@ -1734,7 +1734,7 @@ class SourceMorphology(object):
         if ap_flux <= 0:
             warnings.warn('[smoothness] Nonpositive total flux.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         if self._sky_smoothness == -99.0:  # invalid skybox
@@ -1744,7 +1744,7 @@ class SourceMorphology(object):
 
         if not np.isfinite(S):
             warnings.warn('Invalid smoothness.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         return S
@@ -1794,7 +1794,7 @@ class SourceMorphology(object):
         if mean_flux_main_clump == 0:
             warnings.warn('[segmap_mid] Zero flux sum.', AstropyUserWarning)
             ratio = 1.0
-            self.flag = 1
+            self.flag = 2
         else:
             ratio = mean_flux_new_pixels / mean_flux_main_clump
 
@@ -1848,7 +1848,7 @@ class SourceMorphology(object):
             warnings.warn('[segmap_mid] Adding brightest pixel to segmap.',
                           AstropyUserWarning)
             segmap[ic, jc] = True
-            self.flag = 1
+            self.flag = 2
 
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
@@ -2077,7 +2077,7 @@ class SourceMorphology(object):
         sorted_flux_sums, sorted_xpeak, sorted_ypeak = self._intensity_sums
         if len(sorted_flux_sums) == 0:
             warnings.warn('[deviation] There are no peaks.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         xp = sorted_xpeak[0]
@@ -2088,7 +2088,7 @@ class SourceMorphology(object):
         if M[0, 0] <= 0:
             warnings.warn('[deviation] Nonpositive flux within MID segmap.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
         yc = M[1, 0] / M[0, 0]
         xc = M[0, 1] / M[0, 0]
@@ -2098,7 +2098,7 @@ class SourceMorphology(object):
 
         if not np.isfinite(D):
             warnings.warn('Invalid D-statistic.', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
             return -99.0  # invalid
 
         return D
@@ -2198,7 +2198,7 @@ class SourceMorphology(object):
             if np.sum(~total_mask) == 0:
                 warnings.warn('[shape_asym] Asymmetry segmap undefined.',
                               AstropyUserWarning)
-                self.flag = 1
+                self.flag = 2
                 return ~self._mask_stamp_no_bg
 
         # Define the "mode" as in Bertin & Arnouts (1996):
@@ -2225,7 +2225,7 @@ class SourceMorphology(object):
             warnings.warn('[shape_asym] Adding brightest pixel to segmap.',
                           AstropyUserWarning)
             above_threshold[ic, jc] = True
-            self.flag = 1
+            self.flag = 2
 
         # Grow regions with 8-connected neighbor "footprint"
         s = ndi.generate_binary_structure(2, 2)
@@ -2255,7 +2255,7 @@ class SourceMorphology(object):
 
         if rmax_circ == 0:
             warnings.warn('[rmax_circ] rmax_circ = 0!', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         return rmax_circ
 
@@ -2285,7 +2285,7 @@ class SourceMorphology(object):
 
         if rmax_ellip == 0:
             warnings.warn('[rmax_ellip] rmax_ellip = 0!', AstropyUserWarning)
-            self.flag = 1
+            self.flag = 2
 
         return rmax_ellip
 
@@ -2378,7 +2378,7 @@ class SourceMorphology(object):
 
         # Since model fitting can be computationally expensive (especially
         # with a large PSF), only do it when the other measurements are OK.
-        if self.flag == 1:
+        if self.flag == 2:
             warnings.warn('[sersic] Skipping Sersic fit...',
                           AstropyUserWarning)
             self.flag_sersic = 1
