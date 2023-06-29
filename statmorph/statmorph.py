@@ -2393,6 +2393,37 @@ class SourceMorphology(object):
                           AstropyUserWarning)
             self.flag_sersic = 1
 
+        # Make sure the effective radius is positive:
+        if sersic_model.r_eff.value <= 0:
+            warnings.warn('[sersic] Nonpositive effective radius?',
+                          AstropyUserWarning)
+            self.flag_sersic = 1
+            return sersic_init
+
+        # In some rare cases, the fitted ellipticity is outside the
+        # range [0, 1]. While we could constrain this parameter during
+        # the fit using the ``bounds`` keyword argument in `Sersic2D`, a less
+        # aggressive solution is to create an equivalent model as follows:
+        if sersic_model.ellip.value > 1:
+            # Note that the semiminor axis is given by
+            # b = (1 - ellip) * a.
+            # This would yield a negative value for b, but since only b^2
+            # appears in the code, we can define an equivalent ellipticity as
+            # 1 - ellip' = -(1 - ellip)  =>  ellip' = 2 - ellip.
+            sersic_model.ellip.value = 2.0 - sersic_model.ellip.value
+        if sersic_model.ellip.value < 0:
+            # This can be interpreted as a, b being flipped (a < b), so we
+            # switch them and define an equivalent ellipticity as
+            # 1 - ellip' = 1 / (1 - ellip)  =>  ellip' = ellip / (ellip - 1).
+            e = sersic_model.ellip.value
+            sersic_model.r_eff.value = (1 - e) * sersic_model.r_eff.value
+            sersic_model.ellip.value = e / (e - 1)
+            # We also need to rotate the model by 90 degrees:
+            sersic_model.theta.value += np.pi/2
+        # Finally, note that the two cases above are not mutually exclusive.
+        # If a Sersic model has ellipticity > 2, then both "corrections" are
+        # applied successively.
+
         return sersic_model
 
     @lazyproperty
