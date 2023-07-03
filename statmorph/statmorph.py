@@ -358,6 +358,10 @@ class SourceMorphology(object):
     sersic_fitting_args : dict, optional
         A dictionary of keyword arguments passed to Astropy's
         `LevMarLSQFitter`. The default is {'maxiter': 500, 'acc': 1e-5}.
+    sersic_model_args : dict, optional
+        A dictionary of keyword arguments passed to Astropy's
+        `Sersic2D`. The default is {'bounds': {'n': (0.01, None)}},
+        which sets a lower bound for the fitted Sersic index.
     sersic_maxiter : int, optional
         Deprecated. Please use ``sersic_fitting_args`` instead.
     segmap_overlap_ratio : float, optional
@@ -382,6 +386,7 @@ class SourceMorphology(object):
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
                  sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
+                 sersic_model_args={'bounds': {'n': (0.01, None)}},
                  sersic_maxiter=None, segmap_overlap_ratio=0.25, verbose=False):
         self._image = image
         self._segmap = segmap
@@ -405,6 +410,7 @@ class SourceMorphology(object):
         self._petro_extent_flux = petro_extent_flux
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._sersic_fitting_args = sersic_fitting_args
+        self._sersic_model_args = sersic_model_args
         self._segmap_overlap_ratio = segmap_overlap_ratio
         self._verbose = verbose
 
@@ -2372,11 +2378,13 @@ class SourceMorphology(object):
         if self._psf is None:
             sersic_init = models.Sersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry,
+                theta=theta, **self._sersic_model_args)
         else:
             sersic_init = ConvolvedSersic2D(
                 amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry, theta=theta)
+                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry,
+                theta=theta, **self._sersic_model_args)
             sersic_init.set_psf(self._psf)
 
         # The number of data points cannot be smaller than the number of
