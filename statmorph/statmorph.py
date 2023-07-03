@@ -379,7 +379,7 @@ class SourceMorphology(object):
 
     """
     def __init__(self, image, segmap, label, mask=None, weightmap=None,
-                 gain=None, psf=None, cutout_extent=1.5, min_cutout_size=48,
+                 gain=None, psf=None, cutout_extent=2.5, min_cutout_size=48,
                  n_sigma_outlier=10, annulus_width=1.0,
                  eta=0.2, petro_fraction_gini=0.2, skybox_size=32,
                  petro_extent_cas=1.5, petro_fraction_cas=0.25,
