@@ -18,7 +18,8 @@ import skimage.segmentation
 from astropy.utils import lazyproperty
 from astropy.stats import sigma_clipped_stats
 from astropy.modeling import models, fitting
-from astropy.utils.exceptions import AstropyUserWarning
+from astropy.utils.exceptions import (
+    AstropyUserWarning, AstropyDeprecationWarning)
 from astropy.convolution import convolve
 import photutils
 
@@ -354,9 +355,11 @@ class SourceMorphology(object):
         When calculating the shape asymmetry segmap, this is the size
         (in pixels) of the constant kernel used to regularize the segmap.
         The default value is 3.0.
+    sersic_fitting_args : dict, optional
+        A dictionary of keyword arguments passed to Astropy's
+        `LevMarLSQFitter`. The default is {'maxiter': 500, 'acc': 1e-5}.
     sersic_maxiter : int, optional
-        The maximum number of iterations during the Sersic profile
-        fitting.
+        Deprecated. Please use ``sersic_fitting_args`` instead.
     segmap_overlap_ratio : float, optional
         The minimum ratio (in order to have a "good" measurement)
         between the area of the intersection of the Gini and MID segmaps
@@ -378,7 +381,8 @@ class SourceMorphology(object):
                  petro_extent_cas=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
-                 sersic_maxiter=500, segmap_overlap_ratio=0.25, verbose=False):
+                 sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
+                 sersic_maxiter=None, segmap_overlap_ratio=0.25, verbose=False):
         self._image = image
         self._segmap = segmap
         self.label = label
@@ -400,7 +404,7 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_flux = petro_extent_flux
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
-        self._sersic_maxiter = sersic_maxiter
+        self._sersic_fitting_args = sersic_fitting_args
         self._segmap_overlap_ratio = segmap_overlap_ratio
         self._verbose = verbose
 
@@ -409,6 +413,13 @@ class SourceMorphology(object):
 
         if not isinstance(self._segmap, photutils.segmentation.SegmentationImage):
             self._segmap = photutils.segmentation.SegmentationImage(self._segmap)
+
+        # Check deprecated arguments
+        if sersic_maxiter is not None:
+            warnings.warn(
+                "The argument sersic_maxiter is deprecated. Please use "
+                "sersic_fitting_args instead.", AstropyDeprecationWarning)
+            self._sersic_fitting_args['maxiter'] = sersic_maxiter
 
         # Check sanity of input data
         self._segmap.check_labels([self.label])
@@ -2387,7 +2398,7 @@ class SourceMorphology(object):
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         sersic_model = fit_sersic(sersic_init, x, y, z, weights=fit_weights,
-                                  maxiter=self._sersic_maxiter, acc=1e-5)
+                                  **self._sersic_fitting_args)
         if fit_sersic.fit_info['ierr'] not in [1, 2, 3, 4]:
             warnings.warn("fit_info['message']: " + fit_sersic.fit_info['message'],
                           AstropyUserWarning)
