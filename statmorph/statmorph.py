@@ -139,8 +139,11 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     ap_total = photutils.aperture.CircularAperture(center, r_total)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    assert total_sum != 0
-    if total_sum < 0:
+    if total_sum == 0:
+        warnings.warn('[r_circ] Total flux sum is zero.', AstropyUserWarning)
+        flag = 2
+        return r_total, flag
+    elif total_sum < 0:
         warnings.warn('[r_circ] Total flux sum is negative.', AstropyUserWarning)
         flag = 2
         total_sum = np.abs(total_sum)
@@ -197,8 +200,11 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
         center, a_total, b_total, theta=theta)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
-    assert total_sum != 0
-    if total_sum < 0:
+    if total_sum == 0:
+        warnings.warn('[r_ellip] Total flux sum is zero.', AstropyUserWarning)
+        flag = 2
+        return a_total, flag
+    elif total_sum < 0:
         warnings.warn('[r_ellip] Total flux sum is negative.', AstropyUserWarning)
         flag = 2
         total_sum = np.abs(total_sum)
