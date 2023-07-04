@@ -363,11 +363,17 @@ class SourceMorphology(object):
         The default value is 3.0.
     sersic_fitting_args : dict, optional
         A dictionary of keyword arguments passed to Astropy's
-        `LevMarLSQFitter`. The default is {'maxiter': 500, 'acc': 1e-5}.
+        `LevMarLSQFitter`, which cannot include ``z`` or ``weights``
+        (these are handled internally by statmorph). The default is
+        {'maxiter': 500, 'acc': 1e-5}.
     sersic_model_args : dict, optional
         A dictionary of keyword arguments passed to Astropy's
         `Sersic2D`. The default is {'bounds': {'n': (0.01, None)}},
         which sets a lower bound for the fitted Sersic index.
+        Note that, by default, statmorph will make reasonable
+        initial guesses for all the model parameters (recommended),
+        although this functionality can be overridden for more
+        customized fits.
     sersic_maxiter : int, optional
         Deprecated. Please use ``sersic_fitting_args`` instead.
     segmap_overlap_ratio : float, optional
@@ -415,8 +421,8 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_flux = petro_extent_flux
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
-        self._sersic_fitting_args = sersic_fitting_args
-        self._sersic_model_args = sersic_model_args
+        self._sersic_fitting_args = sersic_fitting_args.copy()
+        self._sersic_model_args = sersic_model_args.copy()
         self._segmap_overlap_ratio = segmap_overlap_ratio
         self._verbose = verbose
 
@@ -2342,30 +2348,73 @@ class SourceMorphology(object):
     def _sersic_model(self):
         """
         Fit a 2D Sersic profile using Astropy's model fitting library.
+        An initial guess for the Sersic model will be generated based on
+        other statmorph measurements, although users can provide their
+        own initial values (and optionally keep them fixed) via the
+        ``sersic_model_args`` keyword argument.
+
         Return the fitted model object.
         """
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
-        center = self._asymmetry_center
-        theta = self.orientation_asymmetry
 
-        # Get flux at the "effective radius"
-        a_in = self.rhalf_ellip - 0.5 * self._annulus_width
-        a_out = self.rhalf_ellip + 0.5 * self._annulus_width
+        # Start from approximate relation between n and concentration
+        empirical_n = 10.0**(-1.5) * self.concentration**3.5
+        empirical_n = min(max(empirical_n, 1.0), 3.5)  # limit to range [1, 3.5]
+
+        # Create initial guesses for some model parameters (amplitude later)
+        if 'r_eff' not in self._sersic_model_args:
+            self._sersic_model_args['r_eff'] = self.rhalf_ellip
+        if 'n' not in self._sersic_model_args:
+            self._sersic_model_args['n'] = empirical_n
+        if 'x_0' not in self._sersic_model_args:
+            self._sersic_model_args['x_0'] = self.xc_asymmetry
+        if 'y_0' not in self._sersic_model_args:
+            self._sersic_model_args['y_0'] = self.yc_asymmetry
+        if 'ellip' not in self._sersic_model_args:
+            self._sersic_model_args['ellip'] = self.ellipticity_asymmetry
+        if 'theta' not in self._sersic_model_args:
+            self._sersic_model_args['theta'] = self.orientation_asymmetry
+
+        # Get position of center with respect to image cutout
+        self._sersic_model_args['x_0'] -= self.xmin_stamp
+        self._sersic_model_args['y_0'] -= self.ymin_stamp
+
+        # For readability
+        guess_r_eff = self._sersic_model_args['r_eff']
+        guess_center = np.array([self._sersic_model_args['x_0'],
+                                 self._sersic_model_args['y_0']])
+        guess_ellip = self._sersic_model_args['ellip']
+        guess_theta = self._sersic_model_args['theta']
+
+        # Get mean flux at the effective "radius"
+        a_in = guess_r_eff - 0.5 * self._annulus_width
+        a_out = guess_r_eff + 0.5 * self._annulus_width
         if a_in < 0:
-            warnings.warn('[sersic] rhalf_ellip < annulus_width.',
+            warnings.warn('[sersic] guess_r_eff < annulus_width.',
                           AstropyUserWarning)
             self.flag_sersic = 1
-            a_in = self.rhalf_ellip
-        b_out = a_out / self.elongation_asymmetry
+            a_in = guess_r_eff
+        b_out = (1 - guess_ellip) * a_out
         ellip_annulus = photutils.aperture.EllipticalAnnulus(
-            center, a_in, a_out, b_out, theta=theta)
+            guess_center, a_in, a_out, b_out, theta=guess_theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, image, method='exact')
         if ellip_annulus_mean_flux <= 0.0:
             warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
             self.flag_sersic = 1
             ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
+
+        # Final parameter
+        if 'amplitude' not in self._sersic_model_args:
+            self._sersic_model_args['amplitude'] = ellip_annulus_mean_flux
+
+        # Create initial model
+        if self._psf is None:
+            sersic_init = models.Sersic2D(**self._sersic_model_args)
+        else:
+            sersic_init = ConvolvedSersic2D(**self._sersic_model_args)
+            sersic_init.set_psf(self._psf)
 
         # Prepare data for fitting
         z = image.copy()
@@ -2377,22 +2426,6 @@ class SourceMorphology(object):
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
 
-        # Initial guess
-        guess_n = 10.0**(-1.5) * self.concentration**3.5  # empirical
-        guess_n = min(max(guess_n, 1.0), 3.5)  # limit to range [1.0, 3.5]
-        xc, yc = self._asymmetry_center
-        if self._psf is None:
-            sersic_init = models.Sersic2D(
-                amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry,
-                theta=theta, **self._sersic_model_args)
-        else:
-            sersic_init = ConvolvedSersic2D(
-                amplitude=ellip_annulus_mean_flux, r_eff=self.rhalf_ellip,
-                n=guess_n, x_0=xc, y_0=yc, ellip=self.ellipticity_asymmetry,
-                theta=theta, **self._sersic_model_args)
-            sersic_init.set_psf(self._psf)
-
         # The number of data points cannot be smaller than the number of
         # free parameters (7 in the case of Sersic2D)
         if z.size < sersic_init.parameters.size:
@@ -2403,7 +2436,7 @@ class SourceMorphology(object):
 
         # Since model fitting can be computationally expensive (especially
         # with a large PSF), only do it when the other measurements are OK.
-        if self.flag == 2:
+        if self.flag >= 2:
             warnings.warn('[sersic] Skipping Sersic fit...',
                           AstropyUserWarning)
             self.flag_sersic = 1
@@ -2411,7 +2444,7 @@ class SourceMorphology(object):
 
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
-        sersic_model = fit_sersic(sersic_init, x, y, z, weights=fit_weights,
+        sersic_model = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
                                   **self._sersic_fitting_args)
         if fit_sersic.fit_info['ierr'] not in [1, 2, 3, 4]:
             warnings.warn("fit_info['message']: " + fit_sersic.fit_info['message'],
