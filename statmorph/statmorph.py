@@ -4,7 +4,6 @@ of galaxy images.
 """
 # Author: Vicente Rodriguez-Gomez <vrodgom.astro@gmail.com>
 # Licensed under a 3-Clause BSD License.
-from pkg_resources import parse_version
 import warnings
 import time
 import numpy as np
@@ -82,6 +81,7 @@ _quantity_names = [
     'ny_stamp',
 ]
 
+
 def _quantile(sorted_values, q):
     """
     For a sorted (in increasing order) 1-d array, return the value
@@ -96,12 +96,14 @@ def _quantile(sorted_values, q):
         raise ValueError('Quantiles must be in the range [0, 1].')
     return sorted_values[int(q*(len(sorted_values)-1))]
 
+
 def _aperture_area(ap, mask, **kwargs):
     """
     Calculate the area of a photutils aperture object,
     excluding masked pixels.
     """
     return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
+
 
 def _aperture_mean_nomask(ap, image, **kwargs):
     """
@@ -113,6 +115,7 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     region of interest.
     """
     return ap.do_photometry(image, **kwargs)[0][0] / ap.area
+
 
 def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     """
@@ -128,6 +131,7 @@ def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
         cur_fraction = ap_sum / total_sum
 
     return cur_fraction - fraction
+
 
 def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     """
@@ -169,6 +173,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
 
     return r, flag
 
+
 def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
                                       fraction, total_sum):
     """
@@ -185,6 +190,7 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
         cur_fraction = ap_sum / total_sum
 
     return cur_fraction - fraction
+
 
 def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
                                        a_total, fraction):
@@ -231,6 +237,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
 
     return a, flag
 
+
 class ConvolvedSersic2D(models.Sersic2D):
     """
     Two-dimensional Sersic surface brightness profile, convolved with
@@ -263,6 +270,7 @@ class ConvolvedSersic2D(models.Sersic2D):
         # Apparently, scipy.signal also wants double:
         return scipy.signal.fftconvolve(
             np.float64(z_sersic), np.float64(cls.psf), mode='same')
+
 
 class SourceMorphology(object):
     """
@@ -1838,7 +1846,7 @@ class SourceMorphology(object):
         Notes
         -----
         This implementation improves upon previous ones by making
-        the MID segmap independent from the number of quantiles
+        the MID segmap independent of the number of quantiles
         used in the calculation, as well as other parameters.
         """
         num_pixelvals = len(self._sorted_pixelvals_stamp_no_bg_nonnegative)
@@ -2292,9 +2300,9 @@ class SourceMorphology(object):
     def rmax_ellip(self):
         """
         Return the semimajor axis of the minimal ellipse (with fixed
-        center, elongation and orientation) that contains all of
-        the main segment of the shape asymmetry segmap. In most
-        cases this is almost identical to rmax_circ.
+        center, elongation and orientation) that contains the entire
+        main segment of the shape asymmetry segmap. In most cases
+        this is almost identical to rmax_circ.
         """
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
@@ -2425,10 +2433,18 @@ class SourceMorphology(object):
         locs = (image != 0) & (weightmap != 0)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
+        # Number of "valid" pixels
+        num_validpixels = np.sum(locs)
 
-        # The number of data points cannot be smaller than the number of
-        # free parameters (7 in the case of Sersic2D)
-        if z.size < sersic_init.parameters.size:
+        # Calculate number of free parameters and degrees of freedom
+        num_freeparam = sersic_init.parameters.size  # 7 for Sersic2D
+        if 'fixed' in self._sersic_model_args:
+            for param, value in self._sersic_model_args['fixed'].items():
+                if value:
+                    num_freeparam -= 1
+        assert num_freeparam >= 0
+        self._sersic_ndof = num_validpixels - num_freeparam
+        if self._sersic_ndof <= 0:
             warnings.warn('[sersic] Not enough data for fit.',
                           AstropyUserWarning)
             self.flag_sersic = 1
