@@ -2443,8 +2443,8 @@ class SourceMorphology(object):
                 if value:
                     num_freeparam -= 1
         assert num_freeparam >= 0
-        self._sersic_ndof = num_validpixels - num_freeparam
-        if self._sersic_ndof <= 0:
+        num_dof = num_validpixels - num_freeparam
+        if num_dof <= 0:
             warnings.warn('[sersic] Not enough data for fit.',
                           AstropyUserWarning)
             self.flag_sersic = 1
@@ -2497,6 +2497,10 @@ class SourceMorphology(object):
         # Finally, note that the two cases above are not mutually exclusive.
         # If a Sersic model has ellipticity > 2, then both "corrections" are
         # applied successively.
+
+        # Calculate reduced chi^2 statistic of the fitted model.
+        chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
+        self.sersic_chi2_dof = chi2 / num_dof
 
         return sersic_model
 
