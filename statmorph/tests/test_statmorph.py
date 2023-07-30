@@ -7,7 +7,7 @@ import numpy as np
 import os
 import pytest
 import statmorph
-from astropy.modeling import models
+from astropy.modeling.models import Sersic2D
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyUserWarning
 from numpy.testing import assert_allclose
@@ -34,17 +34,16 @@ def test_quantile():
 
 def test_convolved_sersic():
     from scipy.signal import fftconvolve
+    from astropy.convolution import Gaussian2DKernel
     # Create Gaussian PSF.
-    size = 10  # on each side from the center
-    sigma_psf = 2.0
-    y, x = np.mgrid[-size:size + 1, -size:size + 1]
-    psf = np.exp(-(x ** 2 + y ** 2) / (2.0 * sigma_psf ** 2))
-    psf /= np.sum(psf)
+    kernel = Gaussian2DKernel(2.0)
+    kernel.normalize()  # make sure kernel adds up to 1
+    psf = kernel.array  # we only need the numpy array
     # Create 2D Sersic profile.
     ny, nx = 25, 25
     y, x = np.mgrid[0:ny, 0:nx]
-    sersic = models.Sersic2D(amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12,
-                             ellip=0.5, theta=0)
+    sersic = Sersic2D(
+        amplitude=1, r_eff=5, n=1.5, x_0=12, y_0=12, ellip=0.5, theta=0)
     z = sersic(x, y)
     # Create "convolved" Sersic profile with same properties as normal one.
     convolved_sersic = statmorph.ConvolvedSersic2D(
