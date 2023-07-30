@@ -22,8 +22,12 @@ from astropy.utils.exceptions import (
 from astropy.convolution import convolve
 import photutils
 
-__all__ = ['ConvolvedSersic2D', 'SourceMorphology', 'source_morphology',
-           '__version__']
+__all__ = [
+    'ConvolvedSersic2D',
+    'SourceMorphology',
+    'source_morphology',
+    '__version__',
+]
 
 __version__ = '0.5.1'
 
@@ -70,6 +74,7 @@ _quantity_names = [
     'sersic_yc',
     'sersic_ellip',
     'sersic_theta',
+    'sersic_chi2_dof',
     'sky_mean',
     'sky_median',
     'sky_sigma',
@@ -2443,8 +2448,8 @@ class SourceMorphology(object):
                 if value:
                     num_freeparam -= 1
         assert num_freeparam >= 0
-        num_dof = num_validpixels - num_freeparam
-        if num_dof <= 0:
+        self._sersic_num_dof = num_validpixels - num_freeparam
+        if self._sersic_num_dof <= 0:
             warnings.warn('[sersic] Not enough data for fit.',
                           AstropyUserWarning)
             self.flag_sersic = 1
@@ -2498,9 +2503,8 @@ class SourceMorphology(object):
         # If a Sersic model has ellipticity > 2, then both "corrections" are
         # applied successively.
 
-        # Calculate reduced chi^2 statistic of the fitted model.
-        chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
-        self.sersic_chi2_dof = chi2 / num_dof
+        # Calculate chi^2 statistic of the fitted model.
+        self._sersic_chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
 
         return sersic_model
 
@@ -2561,6 +2565,13 @@ class SourceMorphology(object):
         """
         theta = self._sersic_model.theta.value
         return theta - np.floor(theta/np.pi) * np.pi
+
+    @lazyproperty
+    def sersic_chi2_dof(self):
+        """
+        Reduced chi^2 statistic of the fitted model.
+        """
+        return self._sersic_chi2 / self._sersic_num_dof
 
 
 def source_morphology(image, segmap, **kwargs):
