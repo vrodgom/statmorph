@@ -561,6 +561,7 @@ class SourceMorphology(object):
         self.flag = 4  # catastrophic
         self.flag_sersic = 1
         self.runtime = -99.0
+        self.sersic_chi2_dof = -99.0
 
     def _calculate_morphology(self):
         """
@@ -2423,6 +2424,9 @@ class SourceMorphology(object):
         else:
             sersic_init = ConvolvedSersic2D(**self._sersic_model_args)
             sersic_init.set_psf(self._psf)
+
+        # Dummy value (in case calculations are aborted)
+        self.sersic_chi2_dof = -99.0
 
         # Prepare data for fitting
         z = image.copy()
