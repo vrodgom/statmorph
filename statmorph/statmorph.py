@@ -310,7 +310,7 @@ class SourceMorphology(object):
         corresponds to the center of the PSF. Typically, including
         this keyword argument will make the code run slower by a
         factor of a few, depending on the size of the PSF, but the
-        resulting Sersic fits will in principle be more correct.
+        resulting Sersic fits will be more correct.
     cutout_extent : float, optional
         The target fractional size of the data cutout relative to
         the minimal bounding box containing the source. The value
@@ -458,10 +458,6 @@ class SourceMorphology(object):
 
         if self._weightmap is None and self._gain is None:
             raise AssertionError('Must provide either weightmap or gain.')
-
-        # Normalize PSF
-        if self._psf is not None:
-            self._psf = self._psf / np.sum(self._psf)
 
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements (0-4)
