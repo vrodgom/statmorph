@@ -258,6 +258,37 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     return a, flag
 
 
+def _postfitting_fix(a, ellip, theta):
+    """
+    In some rare cases, the ellipticity of the fitted Sersic models is
+    outside the range [0, 1]. While we could constrain this parameter
+    during the fit using the ``bounds`` keyword argument in `Sersic2D`,
+    a less aggressive solution is to create an equivalent model after
+    fitting by exploiting degeneracies between the ellipticity, choice
+    of major axis, and position angle, as we do in this function.
+    """
+    if ellip > 1:
+        # Note that the semiminor axis is given by
+        # b = (1 - ellip) * a.
+        # This would yield a negative value for b, but since only b^2
+        # is required, we can define an equivalent ellipticity as
+        # 1 - ellip' = -(1 - ellip)  =>  ellip' = 2 - ellip.
+        ellip = 2.0 - ellip
+    if ellip < 0:
+        # This can be interpreted as a, b being flipped (a < b), so we
+        # switch them and define an equivalent ellipticity as
+        # 1 - ellip' = 1 / (1 - ellip)  =>  ellip' = ellip / (ellip - 1).
+        a = (1 - ellip) * a
+        ellip = ellip / (ellip - 1)
+        # We also need to rotate the position angle by 90 degrees:
+        theta += np.pi / 2
+    # Finally, note that the two cases above are not mutually exclusive.
+    # If a Sersic model has ellipticity > 2, then both "corrections" are
+    # applied successively.
+
+    return a, ellip, theta
+
+
 class ConvolvedSersic2D(models.Sersic2D):
     """
     Sersic2D model convolved with a PSF (provided by the user as a
@@ -2580,29 +2611,16 @@ class SourceMorphology(object):
             self.flag_sersic = 1
             return sersic_init
 
-        # In some rare cases, the fitted ellipticity is outside the
-        # range [0, 1]. While we could constrain this parameter during
-        # the fit using the ``bounds`` keyword argument in `Sersic2D`, a less
-        # aggressive solution is to create an equivalent model as follows:
-        if sersic_model.ellip.value > 1:
-            # Note that the semiminor axis is given by
-            # b = (1 - ellip) * a.
-            # This would yield a negative value for b, but since only b^2
-            # appears in the code, we can define an equivalent ellipticity as
-            # 1 - ellip' = -(1 - ellip)  =>  ellip' = 2 - ellip.
-            sersic_model.ellip.value = 2.0 - sersic_model.ellip.value
-        if sersic_model.ellip.value < 0:
-            # This can be interpreted as a, b being flipped (a < b), so we
-            # switch them and define an equivalent ellipticity as
-            # 1 - ellip' = 1 / (1 - ellip)  =>  ellip' = ellip / (ellip - 1).
-            e = sersic_model.ellip.value
-            sersic_model.r_eff.value = (1 - e) * sersic_model.r_eff.value
-            sersic_model.ellip.value = e / (e - 1)
-            # We also need to rotate the model by 90 degrees:
-            sersic_model.theta.value += np.pi/2
-        # Finally, note that the two cases above are not mutually exclusive.
-        # If a Sersic model has ellipticity > 2, then both "corrections" are
-        # applied successively.
+        # Apply post-fitting corrections (if applicable)
+        (
+            sersic_model.r_eff.value,
+            sersic_model.ellip.value,
+            sersic_model.theta.value
+        ) = _postfitting_fix(
+            sersic_model.r_eff.value,
+            sersic_model.ellip.value,
+            sersic_model.theta.value
+        )
 
         # Calculate chi^2 statistic of the fitted model.
         self._sersic_chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
@@ -2680,6 +2698,10 @@ class SourceMorphology(object):
             return -99.0
 
         return self._sersic_chi2 / self._sersic_num_dof
+
+    ###########################
+    # DOUBLE SERSIC MODEL FIT #
+    ###########################
 
     @lazyproperty
     def _doublesersic_model(self):
@@ -2785,7 +2807,25 @@ class SourceMorphology(object):
             self.flag_doublesersic = 1
             return doublesersic_init
 
-        # TODO: fix ellipticities when out of [0, 1] range.
+        # Apply post-fitting corrections (if applicable)
+        (
+            doublesersic_model.r_eff_1.value,
+            doublesersic_model.ellip_1.value,
+            doublesersic_model.theta_1.value
+        ) = _postfitting_fix(
+            doublesersic_model.r_eff_1.value,
+            doublesersic_model.ellip_1.value,
+            doublesersic_model.theta_1.value
+        )
+        (
+            doublesersic_model.r_eff_2.value,
+            doublesersic_model.ellip_2.value,
+            doublesersic_model.theta_2.value
+        ) = _postfitting_fix(
+            doublesersic_model.r_eff_2.value,
+            doublesersic_model.ellip_2.value,
+            doublesersic_model.theta_2.value
+        )
 
         # Calculate chi^2 statistic of the fitted model.
         self._doublesersic_chi2 = np.sum((fit_weights * (z - doublesersic_model(x, y)))**2)
