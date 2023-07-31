@@ -16,7 +16,7 @@ import skimage.feature
 import skimage.segmentation
 from astropy.utils import lazyproperty
 from astropy.stats import sigma_clipped_stats
-from astropy.modeling import models, fitting
+from astropy.modeling import models, fitting, Fittable2DModel, Parameter
 from astropy.utils.exceptions import (
     AstropyUserWarning, AstropyDeprecationWarning)
 from astropy.convolution import convolve
@@ -24,6 +24,8 @@ import photutils
 
 __all__ = [
     'ConvolvedSersic2D',
+    'DoubleSersic2D',
+    'ConvolvedDoubleSersic2D',
     'SourceMorphology',
     'source_morphology',
     '__version__',
@@ -75,6 +77,19 @@ _quantity_names = [
     'sersic_ellip',
     'sersic_theta',
     'sersic_chi2_dof',
+    'doublesersic_xc',
+    'doublesersic_yc',
+    'doublesersic_amplitude1',
+    'doublesersic_rhalf1',
+    'doublesersic_n1',
+    'doublesersic_ellip1',
+    'doublesersic_theta1',
+    'doublesersic_amplitude2',
+    'doublesersic_rhalf2',
+    'doublesersic_n2',
+    'doublesersic_ellip2',
+    'doublesersic_theta2',
+    'doublesersic_chi2_dof',
     'sky_mean',
     'sky_median',
     'sky_sigma',
@@ -245,8 +260,8 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
 
 class ConvolvedSersic2D(models.Sersic2D):
     """
-    Two-dimensional Sersic surface brightness profile, convolved with
-    a PSF provided by the user as a numpy array.
+    Sersic2D model convolved with a PSF (provided by the user as a
+    numpy array).
 
     See Also
     --------
@@ -260,21 +275,90 @@ class ConvolvedSersic2D(models.Sersic2D):
         """
         Specify the PSF to be convolved with the Sersic2D model.
         """
-        cls.psf = psf / np.sum(psf)  # make sure it's normalized
+        cls.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
 
     @classmethod
     def evaluate(cls, x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta):
         """
         Evaluate the ConvolvedSersic2D model.
         """
-        z_sersic = models.Sersic2D.evaluate(x, y, amplitude, r_eff, n, x_0, y_0,
-                                            ellip, theta)
+        z = models.Sersic2D.evaluate(
+            x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta)
         if cls.psf is None:
             raise AssertionError('Must specify PSF using set_psf method.')
 
-        # Apparently, scipy.signal also wants double:
-        return scipy.signal.fftconvolve(
-            np.float64(z_sersic), np.float64(cls.psf), mode='same')
+        assert z.dtype == np.float64 and cls.psf.dtype == np.float64
+
+        return scipy.signal.fftconvolve(z, cls.psf, mode='same')
+
+
+class DoubleSersic2D(Fittable2DModel):
+    """
+    Custom class for a double 2D Sersic model. Note that the two
+    components share the same center.
+    """
+    # Shared center
+    x_0 = Parameter(default=0)
+    y_0 = Parameter(default=0)
+    # First component
+    amplitude_1 = Parameter(default=1)
+    r_eff_1 = Parameter(default=1)
+    n_1 = Parameter(default=4)  # de Vaucouleurs
+    ellip_1 = Parameter(default=0)
+    theta_1 = Parameter(default=0)
+    # Second component
+    amplitude_2 = Parameter(default=1)
+    r_eff_2 = Parameter(default=1)
+    n_2 = Parameter(default=1)  # exponential
+    ellip_2 = Parameter(default=0)
+    theta_2 = Parameter(default=0)
+
+    @classmethod
+    def evaluate(cls, x, y, x_0, y_0,
+                 amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
+                 amplitude_2, r_eff_2, n_2, ellip_2, theta_2):
+        """
+        Evaluate the DoubleSersic2D model.
+        """
+        return (
+            models.Sersic2D.evaluate(
+                x, y, amplitude_1, r_eff_1, n_1, x_0, y_0, ellip_1, theta_1)
+            + models.Sersic2D.evaluate(
+                x, y, amplitude_2, r_eff_2, n_2, x_0, y_0, ellip_2, theta_2)
+        )
+
+
+class ConvolvedDoubleSersic2D(DoubleSersic2D):
+    """
+    DoubleSersic2D model convolved with a PSF (provided by the user
+    as a numpy array).
+    """
+    psf = None
+
+    @classmethod
+    def set_psf(cls, psf):
+        """
+        Specify the PSF to be convolved with the DoubleSersic2D model.
+        """
+        cls.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
+
+    @classmethod
+    def evaluate(cls, x, y, x_0, y_0,
+                 amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
+                 amplitude_2, r_eff_2, n_2, ellip_2, theta_2):
+        """
+        Evaluate the ConvolvedDoubleSersic2D model.
+        """
+        z = DoubleSersic2D.evaluate(
+            x, y, x_0, y_0,
+            amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
+            amplitude_2, r_eff_2, n_2, ellip_2, theta_2)
+        if cls.psf is None:
+            raise AssertionError('Must specify PSF using set_psf method.')
+
+        assert z.dtype == np.float64 and cls.psf.dtype == np.float64
+
+        return scipy.signal.fftconvolve(z, cls.psf, mode='same')
 
 
 class SourceMorphology(object):
@@ -389,6 +473,12 @@ class SourceMorphology(object):
         customized fits.
     sersic_maxiter : int, optional
         Deprecated. Please use ``sersic_fitting_args`` instead.
+    doublesersic_fitting_args : dict, optional
+        Same as sersic_fitting_args, but for the double 2D Sersic fit.
+        The default is {'maxiter': 500, 'acc': 1e-5}.
+    doublesersic_model_args : dict, optional
+        Same as sersic_model_args, but for the double 2D Sersic fit.
+        The default is {'bounds': {'n_1': (0.01, None), 'n_2': (0.01, None)}}.
     segmap_overlap_ratio : float, optional
         The minimum ratio (in order to have a "good" measurement)
         between the area of the intersection of the Gini and MID segmaps
@@ -412,6 +502,9 @@ class SourceMorphology(object):
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
                  sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
                  sersic_model_args={'bounds': {'n': (0.01, None)}},
+                 doublesersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
+                 doublesersic_model_args={
+                     'bounds': {'n_1': (0.01, None), 'n_2': (0.01, None)}},
                  sersic_maxiter=None, segmap_overlap_ratio=0.25, verbose=False):
         self._image = image
         self._segmap = segmap
@@ -436,6 +529,8 @@ class SourceMorphology(object):
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
         self._sersic_fitting_args = sersic_fitting_args.copy()
         self._sersic_model_args = sersic_model_args.copy()
+        self._doublesersic_fitting_args = doublesersic_fitting_args.copy()
+        self._doublesersic_model_args = doublesersic_model_args.copy()
         self._segmap_overlap_ratio = segmap_overlap_ratio
         self._verbose = verbose
 
@@ -467,6 +562,7 @@ class SourceMorphology(object):
         # These flags will be modified during the calculations:
         self.flag = 0  # attempts to flag bad measurements (0-4)
         self.flag_sersic = 0  # attempts to flag bad Sersic fits (0 or 1)
+        self.flag_doublesersic = 0  # flag bad double Sersic fits (0 or 1)
 
         # If something goes wrong, use centroid instead of asymmetry center
         # (better performance in some pathological cases, e.g. GOODS-S 32143):
@@ -561,8 +657,10 @@ class SourceMorphology(object):
         self.ny_stamp = -99
         self.flag = 4  # catastrophic
         self.flag_sersic = 1
+        self.flag_doublesersic = 1
         self.runtime = -99.0
-        self.sersic_chi2_dof = -99.0
+        self.sersic_runtime = -99.0
+        self.doublesersic_runtime = -99.0
 
     def _calculate_morphology(self):
         """
@@ -570,7 +668,7 @@ class SourceMorphology(object):
         as "lazy" properties.
         """
         for q in _quantity_names:
-            tmp = self[q]
+            _ = self[q]
 
     def _check_segmaps(self):
         """
@@ -2358,7 +2456,7 @@ class SourceMorphology(object):
     def _sersic_model(self):
         """
         Fit a 2D Sersic profile using Astropy's model fitting library.
-        An initial guess for the Sersic model will be generated based on
+        An initial guess for the model is automatically generated based on
         other statmorph measurements, although users can provide their
         own initial values (and optionally keep them fixed) via the
         ``sersic_model_args`` keyword argument.
@@ -2367,6 +2465,9 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         ny, nx = image.shape
+
+        # Measure runtime
+        start = time.time()
 
         # Start from approximate relation between n and concentration
         empirical_n = 10.0**(-1.5) * self.concentration**3.5
@@ -2427,11 +2528,11 @@ class SourceMorphology(object):
             sersic_init.set_psf(self._psf)
 
         # Dummy value (in case calculations are aborted)
-        self.sersic_chi2_dof = -99.0
+        self._sersic_chi2 = -99.0
 
         # Prepare data for fitting
         z = image.copy()
-        y, x = np.mgrid[0:ny, 0:nx]
+        y, x = np.float64(np.mgrid[0:ny, 0:nx])
         weightmap = self._weightmap_stamp
         # Exclude pixels with image == 0 or weightmap == 0 from the fit.
         fit_weights = np.zeros_like(z)
@@ -2506,6 +2607,9 @@ class SourceMorphology(object):
         # Calculate chi^2 statistic of the fitted model.
         self._sersic_chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
 
+        # Save runtime
+        self.sersic_runtime = time.time() - start
+
         return sersic_model
 
     @lazyproperty
@@ -2571,7 +2675,232 @@ class SourceMorphology(object):
         """
         Reduced chi^2 statistic of the fitted model.
         """
+        _ = self._sersic_model
+        if self._sersic_chi2 == -99.0:
+            return -99.0
+
         return self._sersic_chi2 / self._sersic_num_dof
+
+    @lazyproperty
+    def _doublesersic_model(self):
+        """
+        Fit a double 2D Sersic profile using Astropy's model fitting library.
+        An initial guess for the model is automatically generated based on
+        other statmorph measurements, although users can provide their own
+        initial values (and optionally keep them fixed) via the
+        ``doublesersic_model_args`` keyword argument.
+
+        Return the fitted model object.
+        """
+        image = self._cutout_stamp_maskzeroed
+        ny, nx = image.shape
+
+        # Measure runtime
+        start = time.time()
+
+        # Create initial guesses for the model parameters
+        if 'x_0' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['x_0'] = self.sersic_xc
+        if 'y_0' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['y_0'] = self.sersic_yc
+        if 'amplitude_1' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['amplitude_1'] = self.sersic_amplitude / 2
+        if 'r_eff_1' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['r_eff_1'] = self.sersic_rhalf
+        if 'n_1' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['n_1'] = 4.0  # de Vaucouleurs
+        if 'ellip_1' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['ellip_1'] = self.sersic_ellip
+        if 'theta_1' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['theta_1'] = self.sersic_theta
+        if 'amplitude_2' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['amplitude_2'] = self.sersic_amplitude / 2
+        if 'r_eff_2' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['r_eff_2'] = self.sersic_rhalf
+        if 'n_2' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['n_2'] = 1.0  # exponential
+        if 'ellip_2' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['ellip_2'] = self.sersic_ellip
+        if 'theta_2' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['theta_2'] = self.sersic_theta
+
+        # Create initial model
+        if self._psf is None:
+            doublesersic_init = DoubleSersic2D(**self._doublesersic_model_args)
+        else:
+            doublesersic_init = ConvolvedDoubleSersic2D(**self._doublesersic_model_args)
+            doublesersic_init.set_psf(self._psf)
+
+        # Dummy value (in case calculations are aborted)
+        self._doublesersic_chi2 = -99.0
+
+        # Prepare data for fitting
+        z = image.copy()
+        y, x = np.float64(np.mgrid[0:ny, 0:nx])
+        weightmap = self._weightmap_stamp
+        # Exclude pixels with image == 0 or weightmap == 0 from the fit.
+        fit_weights = np.zeros_like(z)
+        locs = (image != 0) & (weightmap != 0)
+        # The sky background noise is already included in the weightmap:
+        fit_weights[locs] = 1.0 / weightmap[locs]
+        # Number of "valid" pixels
+        num_validpixels = np.sum(locs)
+
+        # Calculate number of free parameters and degrees of freedom
+        num_freeparam = doublesersic_init.parameters.size  # 12 for DoubleSersic2D
+        if 'fixed' in self._doublesersic_model_args:
+            for param, value in self._doublesersic_model_args['fixed'].items():
+                if value:
+                    num_freeparam -= 1
+        assert num_freeparam >= 0
+        self._doublesersic_num_dof = num_validpixels - num_freeparam
+        if self._doublesersic_num_dof <= 0:
+            warnings.warn('[doublesersic] Not enough data for fit.',
+                          AstropyUserWarning)
+            self.flag_doublesersic = 1
+            return doublesersic_init
+
+        # Since model fitting can be computationally expensive (especially
+        # with a large PSF), only do it when the other measurements are OK.
+        if self.flag >= 2:
+            warnings.warn('[doublesersic] Skipping double Sersic fit...',
+                          AstropyUserWarning)
+            self.flag_doublesersic = 1
+            return doublesersic_init
+
+        # Try to fit model
+        fit_doublesersic = fitting.LevMarLSQFitter()
+        doublesersic_model = fit_doublesersic(
+            doublesersic_init, x, y, z=z, weights=fit_weights,
+            **self._doublesersic_fitting_args)
+        if fit_doublesersic.fit_info['ierr'] not in [1, 2, 3, 4]:
+            warnings.warn("fit_info['message']: " + fit_doublesersic.fit_info['message'],
+                          AstropyUserWarning)
+            self.flag_doublesersic = 1
+
+        # Make sure the effective radii are positive:
+        if doublesersic_model.r_eff_1.value <= 0 or doublesersic_model.r_eff_2.value <= 0:
+            warnings.warn('[doublesersic] Nonpositive effective radius?',
+                          AstropyUserWarning)
+            self.flag_doublesersic = 1
+            return doublesersic_init
+
+        # TODO: fix ellipticities when out of [0, 1] range.
+
+        # Calculate chi^2 statistic of the fitted model.
+        self._doublesersic_chi2 = np.sum((fit_weights * (z - doublesersic_model(x, y)))**2)
+
+        # Save runtime
+        self.doublesersic_runtime = time.time() - start
+
+        return doublesersic_model
+
+    @lazyproperty
+    def doublesersic_xc(self):
+        """
+        The x-coordinate of the center of the double 2D Sersic fit,
+        relative to the original image.
+        """
+        return self.xmin_stamp + self._doublesersic_model.x_0.value
+
+    @lazyproperty
+    def doublesersic_yc(self):
+        """
+        The y-coordinate of the center of the double 2D Sersic fit,
+        relative to the original image.
+        """
+        return self.ymin_stamp + self._doublesersic_model.y_0.value
+
+    @lazyproperty
+    def doublesersic_amplitude1(self):
+        """
+        The amplitude of the first component of the double 2D Sersic fit
+        at its effective radius (rhalf1).
+        """
+        return self._doublesersic_model.amplitude_1.value
+
+    @lazyproperty
+    def doublesersic_rhalf1(self):
+        """
+        The effective (half-light) radius of the first component of the
+        double 2D Sersic fit.
+        """
+        return self._doublesersic_model.r_eff_1.value
+
+    @lazyproperty
+    def doublesersic_n1(self):
+        """
+        The Sersic index ``n`` of the first component of the double 2D
+        Sersic fit.
+        """
+        return self._doublesersic_model.n_1.value
+
+    @lazyproperty
+    def doublesersic_ellip1(self):
+        """
+        The ellipticity of the first component of the double 2D Sersic fit.
+        """
+        return self._doublesersic_model.ellip_1.value
+
+    @lazyproperty
+    def doublesersic_theta1(self):
+        """
+        The orientation (counterclockwise, in radians) of the
+        first component of the double 2D Sersic fit.
+        """
+        theta = self._doublesersic_model.theta_1.value
+        return theta - np.floor(theta/np.pi) * np.pi
+
+    @lazyproperty
+    def doublesersic_amplitude2(self):
+        """
+        The amplitude of the second component of the double 2D Sersic fit
+        at its effective radius (rhalf2).
+        """
+        return self._doublesersic_model.amplitude_2.value
+
+    @lazyproperty
+    def doublesersic_rhalf2(self):
+        """
+        The effective (half-light) radius of the second component of the
+        double 2D Sersic fit.
+        """
+        return self._doublesersic_model.r_eff_2.value
+
+    @lazyproperty
+    def doublesersic_n2(self):
+        """
+        The Sersic index ``n`` of the second component of the double 2D
+        Sersic fit.
+        """
+        return self._doublesersic_model.n_2.value
+
+    @lazyproperty
+    def doublesersic_ellip2(self):
+        """
+        The ellipticity of the second component of the double 2D Sersic fit.
+        """
+        return self._doublesersic_model.ellip_2.value
+
+    @lazyproperty
+    def doublesersic_theta2(self):
+        """
+        The orientation (counterclockwise, in radians) of the
+        second component of the double 2D Sersic fit.
+        """
+        theta = self._doublesersic_model.theta_2.value
+        return theta - np.floor(theta/np.pi) * np.pi
+
+    @lazyproperty
+    def doublesersic_chi2_dof(self):
+        """
+        Reduced chi^2 statistic of the fitted double 2D Sersic model.
+        """
+        _ = self._doublesersic_model
+        if self._doublesersic_chi2 == -99.0:
+            return -99.0
+
+        return self._doublesersic_chi2 / self._doublesersic_num_dof
 
 
 def source_morphology(image, segmap, **kwargs):
