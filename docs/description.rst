@@ -45,6 +45,13 @@ Optionally, the function can also accept:
 In addition, almost all of the parameters used in the calculation of the
 morphological diagnostics can be specified by the user as keyword
 arguments, although it is recommended to leave the default values alone.
+An exception might be the ``cutout_extent`` parameter, which specifies the
+extent of the region (as a multiple of the size of the appropriate segment
+in the segmentation map) used by statmorph to perform the morphological
+measurements. Since the segmentation map is user-defined, in some cases it
+makes sense to increase the value of ``cutout_extent`` from 2.5 (the default)
+to 5 or 10, depending on the sensitivity of the original segmentation map.
+
 For a complete list of keyword arguments, please see the
 `API Reference <api.html>`_.
 
@@ -55,8 +62,8 @@ The output of the `source_morphology` function is a list of
 `SourceMorphology` objects, one for each labeled source, in which the
 different morphological measurements can be accessed as keys or attributes.
 
-Apart from the morphological parameters, statmorph also returns two
-different quality flags:
+Apart from the morphological parameters, statmorph also returns three
+quality flags:
 
 - ``flag`` : indicates the quality of the basic morphological measurements.
   It can take one of the following values:
@@ -79,11 +86,19 @@ different quality flags:
   Sersic profile fitting: values of 0 and 1 indicate good
   and bad fits, respectively.
 
-In general, users should enforce ``flag <= 1``, while ``flag_sersic == 0``
-should be used only when users are actually interested in Sersic fits
-(which can fail for merging galaxies and other "irregular" objects).
+- ``flag_doublesersic`` : indicates if there was a problem during the
+  fitting of the *double* 2D Sersic model: values of 0 and 1 indicate good
+  and bad fits, respectively. Note that this flag is not generated when
+  statmorph is called with the option ``include_doublesersic = False``
+  (the default is ``True``).
 
-In addition to the flags described above, the output should
+
+In general, users should enforce ``flag <= 1``, while ``flag_sersic == 0``
+and ``flag_doublesersic == 0`` should only be imposed when the user is
+actually interested in the corresponding model fits (which, naturally, can
+fail when the model is not a good description of the data).
+
+In addition to the flags described above, the output should usually
 not be trusted when the smallest of the measured distance scales (``r20``)
 is smaller than the radius at half-maximum of the PSF,
 or when the signal-to-noise per pixel (``sn_per_pixel``) is lower than 2.5

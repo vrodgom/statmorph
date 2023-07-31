@@ -27,8 +27,8 @@ for calculating non-parametric morphological diagnostics of galaxy images
    
    overview
    installation
-   notebooks/tutorial
    description
+   notebooks/tutorial
    api
 
 Citing

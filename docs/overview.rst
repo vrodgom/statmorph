@@ -12,7 +12,7 @@ morphological statistics for each source:
 - Multimode, Intensity and Deviation (MID) statistics (Freeman et al. 2013;
   Peth et al. 2016)
 - Outer asymmetry and shape asymmetry (Wen et al. 2014; Pawlik et al. 2016)
-- Sérsic index (Sérsic 1968)
+- Single and double Sérsic indices (Sérsic 1968)
 - Several shape and size measurements associated to the above statistics
   (ellipticity, Petrosian radius, half-light radius, etc.)
 
