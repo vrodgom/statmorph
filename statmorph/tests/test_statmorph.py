@@ -158,7 +158,7 @@ def test_insufficient_data():
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
     assert w[-2].category == AstropyUserWarning
-    assert '[sersic] Not enough data for fit.' in str(w[-2].message)
+    assert 'Not enough data for fit.' in str(w[-2].message)
     assert morph.flag == 2
 
 
@@ -255,8 +255,8 @@ def test_full_gini_segmap():
     segmap = np.int64(image > 0.5)
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
-    assert w[-3].category == AstropyUserWarning
-    assert 'Full Gini segmap!' in str(w[-3].message)
+    assert w[2].category == AstropyUserWarning
+    assert 'Full Gini segmap!' in str(w[2].message)
     assert morph.flag == 2
 
 
@@ -326,6 +326,20 @@ class TestSourceMorphology(object):
             'sersic_yc': 80.40465135599014,
             'sersic_ellip': 0.05083866217150,
             'sersic_theta': 2.47831542907976,
+            'sersic_chi2_dof': 1.3376238276749,
+            'doublesersic_xc': 81.532553358593,
+            'doublesersic_yc': 80.536548408219,
+            'doublesersic_amplitude1': 977.16534068311,
+            'doublesersic_rhalf1': 22.484298765876,
+            'doublesersic_n1': 0.79327851914927,
+            'doublesersic_ellip1': 0.080276873646978,
+            'doublesersic_theta1': 2.2974159066311,
+            'doublesersic_amplitude2': 317.68798626787,
+            'doublesersic_rhalf2': 25.935143308214,
+            'doublesersic_n2': 0.01,
+            'doublesersic_ellip2': 0.1426514566223,
+            'doublesersic_theta2': 0.41940953820527,
+            'doublesersic_chi2_dof': 1.2682460649336,
             'sky_mean': 3.48760604858398,
             'sky_median': -2.68543863296509,
             'sky_sigma': 150.91754150390625,
@@ -337,6 +351,7 @@ class TestSourceMorphology(object):
             'ny_stamp': 162,
             'flag': 0,
             'flag_sersic': 0,
+            'flag_doublesersic': 1,
         }
 
         # Run statmorph on the same galaxy from which the above values
