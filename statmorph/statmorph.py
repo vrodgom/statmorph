@@ -2535,7 +2535,7 @@ class SourceMorphology(object):
         if 'theta' not in self._sersic_model_args:
             self._sersic_model_args['theta'] = self.orientation_asymmetry
 
-        # Get position of center with respect to image cutout
+        # Origin must coincide with that of image cutout
         self._sersic_model_args['x_0'] -= self.xmin_stamp
         self._sersic_model_args['y_0'] -= self.ymin_stamp
 
@@ -2741,7 +2741,8 @@ class SourceMorphology(object):
         if 'y_0' not in self._doublesersic_model_args:
             self._doublesersic_model_args['y_0'] = self.sersic_yc
         if 'amplitude_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['amplitude_1'] = self.sersic_amplitude / 2
+            self._doublesersic_model_args['amplitude_1'] = (
+                self.sersic_amplitude / 2)
         if 'r_eff_1' not in self._doublesersic_model_args:
             self._doublesersic_model_args['r_eff_1'] = self.sersic_rhalf
         if 'n_1' not in self._doublesersic_model_args:
@@ -2751,7 +2752,8 @@ class SourceMorphology(object):
         if 'theta_1' not in self._doublesersic_model_args:
             self._doublesersic_model_args['theta_1'] = self.sersic_theta
         if 'amplitude_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['amplitude_2'] = self.sersic_amplitude / 2
+            self._doublesersic_model_args['amplitude_2'] = (
+                self.sersic_amplitude / 2)
         if 'r_eff_2' not in self._doublesersic_model_args:
             self._doublesersic_model_args['r_eff_2'] = self.sersic_rhalf
         if 'n_2' not in self._doublesersic_model_args:
@@ -2760,6 +2762,10 @@ class SourceMorphology(object):
             self._doublesersic_model_args['ellip_2'] = self.sersic_ellip
         if 'theta_2' not in self._doublesersic_model_args:
             self._doublesersic_model_args['theta_2'] = self.sersic_theta
+
+        # Origin must coincide with that of image cutout
+        self._doublesersic_model_args['x_0'] -= self.xmin_stamp
+        self._doublesersic_model_args['y_0'] -= self.ymin_stamp
 
         # Create initial model
         if self._psf is None:
