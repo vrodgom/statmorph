@@ -306,26 +306,24 @@ class ConvolvedSersic2D(models.Sersic2D):
     """
     psf = None
 
-    @classmethod
-    def set_psf(cls, psf):
+    def set_psf(self, psf):
         """
         Specify the PSF to be convolved with the Sersic2D model.
         """
-        cls.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
+        self.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
 
-    @classmethod
-    def evaluate(cls, x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta):
+    def evaluate(self, x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta):
         """
         Evaluate the ConvolvedSersic2D model.
         """
         z = models.Sersic2D.evaluate(
             x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta)
-        if cls.psf is None:
+        if self.psf is None:
             raise AssertionError('Must specify PSF using set_psf method.')
 
-        assert z.dtype == np.float64 and cls.psf.dtype == np.float64
+        assert z.dtype == np.float64 and self.psf.dtype == np.float64
 
-        return scipy.signal.fftconvolve(z, cls.psf, mode='same')
+        return scipy.signal.fftconvolve(z, self.psf, mode='same')
 
 
 class DoubleSersic2D(Fittable2DModel):
@@ -371,15 +369,13 @@ class ConvolvedDoubleSersic2D(DoubleSersic2D):
     """
     psf = None
 
-    @classmethod
-    def set_psf(cls, psf):
+    def set_psf(self, psf):
         """
         Specify the PSF to be convolved with the DoubleSersic2D model.
         """
-        cls.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
+        self.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
 
-    @classmethod
-    def evaluate(cls, x, y, x_0, y_0,
+    def evaluate(self, x, y, x_0, y_0,
                  amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
                  amplitude_2, r_eff_2, n_2, ellip_2, theta_2):
         """
@@ -389,12 +385,12 @@ class ConvolvedDoubleSersic2D(DoubleSersic2D):
             x, y, x_0, y_0,
             amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
             amplitude_2, r_eff_2, n_2, ellip_2, theta_2)
-        if cls.psf is None:
+        if self.psf is None:
             raise AssertionError('Must specify PSF using set_psf method.')
 
-        assert z.dtype == np.float64 and cls.psf.dtype == np.float64
+        assert z.dtype == np.float64 and self.psf.dtype == np.float64
 
-        return scipy.signal.fftconvolve(z, cls.psf, mode='same')
+        return scipy.signal.fftconvolve(z, self.psf, mode='same')
 
 
 class SourceMorphology(object):
