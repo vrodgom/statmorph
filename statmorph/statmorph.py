@@ -2592,10 +2592,11 @@ class SourceMorphology(object):
 
         # Calculate number of free parameters and degrees of freedom
         num_freeparam = sersic_init.parameters.size  # 7 for Sersic2D
-        if 'fixed' in self._sersic_model_args:
-            for param, value in self._sersic_model_args['fixed'].items():
-                if value:
-                    num_freeparam -= 1
+        for kwarg in ['fixed', 'tied']:
+            if kwarg in self._sersic_model_args:
+                for param, value in self._sersic_model_args[kwarg].items():
+                    if value:
+                        num_freeparam -= 1
         assert num_freeparam >= 0
         self._sersic_num_dof = num_validpixels - num_freeparam
         if self._sersic_num_dof <= 0:
@@ -2784,10 +2785,11 @@ class SourceMorphology(object):
 
         # Calculate number of free parameters and degrees of freedom
         num_freeparam = doublesersic_init.parameters.size  # 12 for DoubleSersic2D
-        if 'fixed' in self._doublesersic_model_args:
-            for param, value in self._doublesersic_model_args['fixed'].items():
-                if value:
-                    num_freeparam -= 1
+        for kwarg in ['fixed', 'tied']:
+            if kwarg in self._doublesersic_model_args:
+                for param, value in self._doublesersic_model_args[kwarg].items():
+                    if value:
+                        num_freeparam -= 1
         assert num_freeparam >= 0
         self._doublesersic_num_dof = num_validpixels - num_freeparam
         if self._doublesersic_num_dof <= 0:
