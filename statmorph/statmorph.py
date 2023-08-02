@@ -269,17 +269,21 @@ def _postfitting_fix(a, ellip, theta):
     outside the range [0, 1]. While we could constrain this parameter
     during the fit using the ``bounds`` keyword argument in `Sersic2D`,
     a less aggressive solution is to create an equivalent model after
-    fitting by exploiting degeneracies between the ellipticity, choice
-    of major axis, and position angle, as we do in this function.
+    fitting by exploiting degeneracies between the ellipticity,
+    semimajor and semiminor axes, and position angle, as we do here.
     """
-    if ellip > 1:
+    if a < 0:  # (1)
+        # First of all, we make sure that the semimajor axis is positive
+        # (note that only a^2 appears in the equations in Sersic2D).
+        a *= -1
+    if ellip > 1:  # (2)
         # Note that the semiminor axis is given by
         # b = (1 - ellip) * a.
         # This would yield a negative value for b, but since only b^2
         # is required, we can define an equivalent ellipticity as
         # 1 - ellip' = -(1 - ellip)  =>  ellip' = 2 - ellip.
         ellip = 2.0 - ellip
-    if ellip < 0:
+    if ellip < 0:  # (3)
         # This can be interpreted as a, b being flipped (a < b), so we
         # switch them and define an equivalent ellipticity as
         # 1 - ellip' = 1 / (1 - ellip)  =>  ellip' = ellip / (ellip - 1).
@@ -287,8 +291,8 @@ def _postfitting_fix(a, ellip, theta):
         ellip = ellip / (ellip - 1)
         # We also need to rotate the position angle by 90 degrees:
         theta += np.pi / 2
-    # Finally, note that the two cases above are not mutually exclusive.
-    # If a Sersic model has ellipticity > 2, then both "corrections" are
+    # Finally, note that the "corrections" above are not mutually exclusive.
+    # If a Sersic model has ellipticity > 2, then steps (2) and (3) are
     # applied successively.
 
     return a, ellip, theta
@@ -2618,13 +2622,6 @@ class SourceMorphology(object):
                           AstropyUserWarning)
             self.flag_sersic = 1
 
-        # Make sure the effective radius is positive:
-        if sersic_model.r_eff.value <= 0:
-            warnings.warn('[sersic] Nonpositive effective radius?',
-                          AstropyUserWarning)
-            self.flag_sersic = 1
-            return sersic_init
-
         # Apply post-fitting corrections (if applicable)
         (sersic_model.r_eff.value,
          sersic_model.ellip.value,
@@ -2817,15 +2814,6 @@ class SourceMorphology(object):
                           + fit_doublesersic.fit_info['message'],
                           AstropyUserWarning)
             self.flag_doublesersic = 1
-
-        # Make sure the effective radii are positive:
-        if (
-                doublesersic_model.r_eff_1.value <= 0
-                or doublesersic_model.r_eff_2.value <= 0):
-            warnings.warn('[doublesersic] Nonpositive effective radius?',
-                          AstropyUserWarning)
-            self.flag_doublesersic = 1
-            return doublesersic_init
 
         # Apply post-fitting corrections (if applicable)
         (doublesersic_model.r_eff_1.value,
