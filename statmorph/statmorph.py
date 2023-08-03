@@ -514,6 +514,12 @@ class SourceMorphology(object):
         Naturally, since multi-component fitting can be computationally
         expensive and not suitable for all data sets, some users might
         want to turn this functionality off.
+    doublesersic_tied_ellip : bool, optional
+        If True, both components of the double Sersic model share the
+        same ellipticity and position angle. The same effect could be
+        achieved using doublesersic_model_args in combination with the
+        'tied' argument, although the syntax would be slightly more
+        involved. The default value is ``False``.
     doublesersic_fitting_args : dict, optional
         Same as sersic_fitting_args, but for the double 2D Sersic fit.
         The default is {'maxiter': 500, 'acc': 1e-5}.
@@ -544,6 +550,7 @@ class SourceMorphology(object):
                  sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
                  sersic_model_args={'bounds': {'n': (0.01, None)}},
                  sersic_maxiter=None, include_doublesersic=True,
+                 doublesersic_tied_ellip=False,
                  doublesersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
                  doublesersic_model_args={
                      'bounds': {'n_1': (0.01, None), 'n_2': (0.01, None)}},
@@ -572,6 +579,7 @@ class SourceMorphology(object):
         self._sersic_fitting_args = sersic_fitting_args.copy()
         self._sersic_model_args = sersic_model_args.copy()
         self._include_doublesersic = include_doublesersic
+        self._doublesersic_tied_ellip = doublesersic_tied_ellip
         self._doublesersic_fitting_args = doublesersic_fitting_args.copy()
         self._doublesersic_model_args = doublesersic_model_args.copy()
         self._segmap_overlap_ratio = segmap_overlap_ratio
@@ -2779,6 +2787,11 @@ class SourceMorphology(object):
         else:
             doublesersic_init = ConvolvedDoubleSersic2D(**self._doublesersic_model_args)
             doublesersic_init.set_psf(self._psf)
+
+        # Tie ellipticity and position angle of the two components
+        if self._doublesersic_tied_ellip:
+            doublesersic_init.ellip_2.tied = lambda model: model.ellip_1
+            doublesersic_init.theta_2.tied = lambda model: model.theta_1
 
         # Dummy value (in case calculations are aborted)
         self._doublesersic_chi2 = -99.0
