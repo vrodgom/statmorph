@@ -88,8 +88,8 @@ quality flags:
 
 - ``flag_doublesersic`` : indicates the quality of the double Sersic fit.
   It can take values of 0 (good), 1 (suspect), 2 (bad), and 4 (catastrophic).
-  This flag is not generated when statmorph is called with the option
-  ``include_doublesersic = False`` (the default is ``True``).
+  This flag is only generated when statmorph is called with the option
+  ``include_doublesersic = True``.
 
 
 In general, users should enforce ``flag <= 1``, while ``flag_sersic <= 1``

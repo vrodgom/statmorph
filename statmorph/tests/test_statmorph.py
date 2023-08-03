@@ -190,8 +190,8 @@ def test_small_source():
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
-    assert w[-2].category == AstropyUserWarning
-    assert 'Single clump!' in str(w[-2].message)
+    assert w[-1].category == AstropyUserWarning
+    assert 'Single clump!' in str(w[-1].message)
     assert morph.flag == 0
     assert morph.multimode == 0
     assert morph.intensity == 0
@@ -365,7 +365,8 @@ class TestSourceMorphology(object):
 
     def test_no_psf(self, print_values=False):
         source_morphs = statmorph.source_morphology(
-            self.image, self.segmap, mask=self.mask, gain=self.gain)
+            self.image, self.segmap, mask=self.mask, gain=self.gain,
+            include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
             assert_allclose(morph[key], self.correct_values[key],
@@ -379,7 +380,8 @@ class TestSourceMorphology(object):
                         [0, 1, 0],
                         [0, 0, 0]], dtype=np.float64)
         source_morphs = statmorph.source_morphology(
-            self.image, self.segmap, mask=self.mask, gain=self.gain, psf=psf)
+            self.image, self.segmap, mask=self.mask, gain=self.gain, psf=psf,
+            include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
             assert_allclose(morph[key], self.correct_values[key],
@@ -390,7 +392,8 @@ class TestSourceMorphology(object):
         weightmap = np.sqrt(
             np.abs(self.image) / self.gain + self.correct_values['sky_sigma']**2)
         source_morphs = statmorph.source_morphology(
-            self.image, self.segmap, mask=self.mask, weightmap=weightmap)
+            self.image, self.segmap, mask=self.mask, weightmap=weightmap,
+            include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
             assert_allclose(morph[key], self.correct_values[key],

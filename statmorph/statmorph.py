@@ -510,10 +510,8 @@ class SourceMorphology(object):
     sersic_maxiter : int, optional
         Deprecated. Please use ``sersic_fitting_args`` instead.
     include_doublesersic : bool, optional
-        If ``True`` (default), also fit a double 2D Sersic model.
-        Naturally, since multi-component fitting can be computationally
-        expensive and not suitable for all data sets, some users might
-        want to turn this functionality off.
+        If ``True``, also fit a double 2D Sersic model. The default is
+        ``False``.
     doublesersic_tied_ellip : bool, optional
         If True, both components of the double Sersic model share the
         same ellipticity and position angle. The same effect could be
@@ -549,7 +547,7 @@ class SourceMorphology(object):
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
                  sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
                  sersic_model_args={'bounds': {'n': (0.01, None)}},
-                 sersic_maxiter=None, include_doublesersic=True,
+                 sersic_maxiter=None, include_doublesersic=False,
                  doublesersic_tied_ellip=False,
                  doublesersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
                  doublesersic_model_args={
