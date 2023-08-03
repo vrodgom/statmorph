@@ -700,11 +700,11 @@ class SourceMorphology(object):
         self.nx_stamp = -99
         self.ny_stamp = -99
         self.flag = 4  # catastrophic
-        self.flag_sersic = 1
+        self.flag_sersic = 4
         self.runtime = -99.0
         self.sersic_runtime = -99.0
         if self._include_doublesersic:
-            self.flag_doublesersic = 1
+            self.flag_doublesersic = 4
             self.doublesersic_runtime = -99.0
 
     def _calculate_morphology(self):
@@ -2552,7 +2552,7 @@ class SourceMorphology(object):
         if a_in < 0:
             warnings.warn('[sersic] guess_r_eff < annulus_width.',
                           AstropyUserWarning)
-            self.flag_sersic = 1
+            self.flag_sersic = 2
             a_in = guess_r_eff
         b_out = (1 - guess_ellip) * a_out
         ellip_annulus = photutils.aperture.EllipticalAnnulus(
@@ -2561,7 +2561,7 @@ class SourceMorphology(object):
             ellip_annulus, image, method='exact')
         if ellip_annulus_mean_flux <= 0.0:
             warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
-            self.flag_sersic = 1
+            self.flag_sersic = 2
             ellip_annulus_mean_flux = np.abs(ellip_annulus_mean_flux)
 
         # Final parameter
@@ -2602,7 +2602,7 @@ class SourceMorphology(object):
         if self._sersic_num_dof <= 0:
             warnings.warn('[sersic] Not enough data for fit.',
                           AstropyUserWarning)
-            self.flag_sersic = 1
+            self.flag_sersic = 2
             return sersic_init
 
         # Since model fitting can be computationally expensive (especially
@@ -2610,7 +2610,7 @@ class SourceMorphology(object):
         if self.flag >= 2:
             warnings.warn('[sersic] Skipping Sersic fit...',
                           AstropyUserWarning)
-            self.flag_sersic = 1
+            self.flag_sersic = 2
             return sersic_init
 
         # Try to fit model
@@ -2621,7 +2621,19 @@ class SourceMorphology(object):
             warnings.warn("[sersic] fit_info['message']: "
                           + fit_sersic.fit_info['message'],
                           AstropyUserWarning)
-            self.flag_sersic = 1
+            self.flag_sersic = 2
+
+        # If any of the parameters gets "stuck" to a boundary, label the
+        # fit as "suspect" (flag_sersic = 1).
+        if 'bounds' in self._sersic_model_args:
+            for param, bounds in self._sersic_model_args['bounds'].items():
+                value = getattr(sersic_model, param).value
+                if value in bounds:
+                    if self._verbose:
+                        warnings.warn(
+                            f"[sersic] {param} got stuck at {value}.",
+                            AstropyUserWarning)
+                    self.flag_sersic = max(self.flag_sersic, 1)
 
         # Apply post-fitting corrections (if applicable)
         (sersic_model.r_eff.value,
@@ -2795,7 +2807,7 @@ class SourceMorphology(object):
         if self._doublesersic_num_dof <= 0:
             warnings.warn('[doublesersic] Not enough data for fit.',
                           AstropyUserWarning)
-            self.flag_doublesersic = 1
+            self.flag_doublesersic = 2
             return doublesersic_init
 
         # Since model fitting can be computationally expensive (especially
@@ -2803,7 +2815,7 @@ class SourceMorphology(object):
         if self.flag >= 2:
             warnings.warn('[doublesersic] Skipping double Sersic fit...',
                           AstropyUserWarning)
-            self.flag_doublesersic = 1
+            self.flag_doublesersic = 2
             return doublesersic_init
 
         # Try to fit model
@@ -2815,7 +2827,19 @@ class SourceMorphology(object):
             warnings.warn("[doublesersic] fit_info['message']: "
                           + fit_doublesersic.fit_info['message'],
                           AstropyUserWarning)
-            self.flag_doublesersic = 1
+            self.flag_doublesersic = 2
+
+        # If any of the parameters gets "stuck" to a boundary, label the
+        # fit as "suspect" (flag_doublesersic = 1).
+        if 'bounds' in self._doublesersic_model_args:
+            for param, bounds in self._doublesersic_model_args['bounds'].items():
+                value = getattr(doublesersic_model, param).value
+                if value in bounds:
+                    if self._verbose:
+                        warnings.warn(
+                            f"[doublesersic] {param} got stuck at {value}.",
+                            AstropyUserWarning)
+                    self.flag_doublesersic = max(self.flag_doublesersic, 1)
 
         # Apply post-fitting corrections (if applicable)
         (doublesersic_model.r_eff_1.value,

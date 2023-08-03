@@ -82,19 +82,18 @@ quality flags:
     measurements would be futile (e.g., a source with a negative total flux).
     This replaces the ``flag_catastrophic`` from earlier versions of statmorph.
 
-- ``flag_sersic`` : indicates if there was a problem during the
-  Sersic profile fitting: values of 0 and 1 indicate good
-  and bad fits, respectively.
+- ``flag_sersic`` : indicates the quality of the Sersic fit. Just like
+  ``flag``, it can take the following values: 0 (good), 1 (suspect), 2 (bad),
+  and 4 (catastrophic).
 
-- ``flag_doublesersic`` : indicates if there was a problem during the
-  fitting of the *double* 2D Sersic model: values of 0 and 1 indicate good
-  and bad fits, respectively. Note that this flag is not generated when
-  statmorph is called with the option ``include_doublesersic = False``
-  (the default is ``True``).
+- ``flag_doublesersic`` : indicates the quality of the double Sersic fit.
+  It can take values of 0 (good), 1 (suspect), 2 (bad), and 4 (catastrophic).
+  This flag is not generated when statmorph is called with the option
+  ``include_doublesersic = False`` (the default is ``True``).
 
 
-In general, users should enforce ``flag <= 1``, while ``flag_sersic == 0``
-and ``flag_doublesersic == 0`` should only be imposed when the user is
+In general, users should enforce ``flag <= 1``, while ``flag_sersic <= 1``
+and ``flag_doublesersic <= 1`` should only be imposed when the user is
 actually interested in the corresponding model fits (which, naturally, can
 fail when the model is not a good description of the data).
 

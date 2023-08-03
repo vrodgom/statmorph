@@ -190,8 +190,8 @@ def test_small_source():
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
-    assert w[-1].category == AstropyUserWarning
-    assert 'Single clump!' in str(w[-1].message)
+    assert w[-2].category == AstropyUserWarning
+    assert 'Single clump!' in str(w[-2].message)
     assert morph.flag == 0
     assert morph.multimode == 0
     assert morph.intensity == 0
@@ -351,7 +351,7 @@ class TestSourceMorphology(object):
             'ny_stamp': 162,
             'flag': 0,
             'flag_sersic': 0,
-            'flag_doublesersic': 1,
+            'flag_doublesersic': 2,
         }
 
         # Run statmorph on the same galaxy from which the above values
