@@ -31,7 +31,7 @@ __all__ = [
     '__version__',
 ]
 
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 
 # A list of the quantities calculated by SourceMorphology,
 # excluding the double Sersic parameters:
