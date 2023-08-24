@@ -497,16 +497,14 @@ class SourceMorphology(object):
     sersic_fitting_args : dict, optional
         A dictionary of keyword arguments passed to Astropy's
         `LevMarLSQFitter`, which cannot include ``z`` or ``weights``
-        (these are handled internally by statmorph). The default is
-        {'maxiter': 500, 'acc': 1e-5}.
+        (these are handled internally by statmorph).
     sersic_model_args : dict, optional
         A dictionary of keyword arguments passed to Astropy's
-        `Sersic2D`. The default is {'bounds': {'n': (0.01, None)}},
-        which sets a lower bound for the fitted Sersic index.
-        Note that, by default, statmorph will make reasonable
+        `Sersic2D`. Note that, by default, statmorph will make reasonable
         initial guesses for all the model parameters (recommended),
         although this functionality can be overridden for more
-        customized fits.
+        customized fits. Also note that, by default, statmorph imposes
+        a lower bound of n = 0.01 for the fitted Sersic index.
     sersic_maxiter : int, optional
         Deprecated. Please use ``sersic_fitting_args`` instead.
     include_doublesersic : bool, optional
@@ -520,10 +518,8 @@ class SourceMorphology(object):
         involved. The default value is ``False``.
     doublesersic_fitting_args : dict, optional
         Same as sersic_fitting_args, but for the double 2D Sersic fit.
-        The default is {'maxiter': 500, 'acc': 1e-5}.
     doublesersic_model_args : dict, optional
         Same as sersic_model_args, but for the double 2D Sersic fit.
-        The default is {'bounds': {'n_1': (0.01, None), 'n_2': (0.01, None)}}.
     segmap_overlap_ratio : float, optional
         The minimum ratio (in order to have a "good" measurement)
         between the area of the intersection of the Gini and MID segmaps
@@ -545,14 +541,11 @@ class SourceMorphology(object):
                  petro_extent_cas=1.5, petro_fraction_cas=0.25,
                  boxcar_size_mid=3.0, niter_bh_mid=5, sigma_mid=1.0,
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
-                 sersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
-                 sersic_model_args={'bounds': {'n': (0.01, None)}},
+                 sersic_fitting_args=None, sersic_model_args=None,
                  sersic_maxiter=None, include_doublesersic=False,
-                 doublesersic_tied_ellip=False,
-                 doublesersic_fitting_args={'maxiter': 500, 'acc': 1e-5},
-                 doublesersic_model_args={
-                     'bounds': {'n_1': (0.01, None), 'n_2': (0.01, None)}},
-                 segmap_overlap_ratio=0.25, verbose=False):
+                 doublesersic_tied_ellip=False, doublesersic_fitting_args=None,
+                 doublesersic_model_args=None, segmap_overlap_ratio=0.25,
+                 verbose=False):
         self._image = image
         self._segmap = segmap
         self.label = label
@@ -574,12 +567,13 @@ class SourceMorphology(object):
         self._sigma_mid = sigma_mid
         self._petro_extent_flux = petro_extent_flux
         self._boxcar_size_shape_asym = boxcar_size_shape_asym
-        self._sersic_fitting_args = sersic_fitting_args.copy()
-        self._sersic_model_args = sersic_model_args.copy()
+        self._sersic_fitting_args = sersic_fitting_args
+        self._sersic_model_args = sersic_model_args
+        self._sersic_maxiter = sersic_maxiter
         self._include_doublesersic = include_doublesersic
         self._doublesersic_tied_ellip = doublesersic_tied_ellip
-        self._doublesersic_fitting_args = doublesersic_fitting_args.copy()
-        self._doublesersic_model_args = doublesersic_model_args.copy()
+        self._doublesersic_fitting_args = doublesersic_fitting_args
+        self._doublesersic_model_args = doublesersic_model_args
         self._segmap_overlap_ratio = segmap_overlap_ratio
         self._verbose = verbose
 
@@ -588,13 +582,6 @@ class SourceMorphology(object):
 
         if not isinstance(self._segmap, photutils.segmentation.SegmentationImage):
             self._segmap = photutils.segmentation.SegmentationImage(self._segmap)
-
-        # Check deprecated arguments
-        if sersic_maxiter is not None:
-            warnings.warn(
-                "The argument sersic_maxiter is deprecated. Please use "
-                "sersic_fitting_args instead.", AstropyDeprecationWarning)
-            self._sersic_fitting_args['maxiter'] = sersic_maxiter
 
         # Check sanity of input data
         self._segmap.check_labels([self.label])
@@ -2523,6 +2510,31 @@ class SourceMorphology(object):
         # Measure runtime
         start = time.time()
 
+        # Initialize dict for fitting arguments (unless provided by user)
+        if self._sersic_fitting_args is None:
+            self._sersic_fitting_args = {}
+
+        # Check deprecated argument
+        if self._sersic_maxiter is not None:
+            warnings.warn(
+                "The argument sersic_maxiter is deprecated. Please use "
+                "sersic_fitting_args instead.", AstropyDeprecationWarning)
+            self._sersic_fitting_args['maxiter'] = self._sersic_maxiter
+
+        # Set default fitting options (unless provided by user)
+        if 'maxiter' not in self._sersic_fitting_args:
+            self._sersic_fitting_args['maxiter'] = 500
+        if 'acc' not in self._sersic_fitting_args:
+            self._sersic_fitting_args['acc'] = 1e-5
+
+        # Initialize dict for model arguments (unless provided by user)
+        if self._sersic_model_args is None:
+            self._sersic_model_args = {}
+
+        # Impose minimum value of n = 0.01 (prevent floating point overflow)
+        if 'bounds' not in self._sersic_model_args:
+            self._sersic_model_args['bounds'] = {'n': (0.01, None)}
+
         # Start from approximate relation between n and concentration
         empirical_n = 10.0**(-1.5) * self.concentration**3.5
         empirical_n = min(max(empirical_n, 1.0), 3.5)  # limit to range [1, 3.5]
@@ -2746,6 +2758,25 @@ class SourceMorphology(object):
 
         # Measure runtime
         start = time.time()
+
+        # Initialize dict for fitting arguments (unless provided by user)
+        if self._doublesersic_fitting_args is None:
+            self._doublesersic_fitting_args = {}
+
+        # Set default fitting options (unless provided by user)
+        if 'maxiter' not in self._doublesersic_fitting_args:
+            self._doublesersic_fitting_args['maxiter'] = 500
+        if 'acc' not in self._doublesersic_fitting_args:
+            self._doublesersic_fitting_args['acc'] = 1e-5
+
+        # Initialize dict for model arguments (unless provided by user)
+        if self._doublesersic_model_args is None:
+            self._doublesersic_model_args = {}
+
+        # Impose minimum value of n = 0.01 (prevent floating point overflow)
+        if 'bounds' not in self._doublesersic_model_args:
+            self._doublesersic_model_args['bounds'] = {'n_1': (0.01, None),
+                                                       'n_2': (0.01, None)}
 
         # Create initial guesses for the model parameters
         if 'x_0' not in self._doublesersic_model_args:
