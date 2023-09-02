@@ -80,10 +80,11 @@ def test_masked_centroid():
     label = 1
     ny, nx = 11, 11
     y, x = np.mgrid[0:ny, 0:nx]
-    image = np.exp(-(x - 5) ** 2 - (y - 5) ** 2)
+    r = np.sqrt((x - nx//2)**2 + (y - ny//2)**2)
+    image = np.exp(-r**2)
     segmap = np.int64(image > 1e-3)
     mask = np.zeros((ny, nx), dtype=np.bool_)
-    mask[5, 5] = True
+    mask[r < 2] = True
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            mask=mask)
@@ -116,7 +117,7 @@ def test_negative_source():
     label = 1
     ny, nx = 51, 51
     y, x = np.mgrid[0:ny, 0:nx]
-    r = np.sqrt((x-nx//2)**2 + (y-ny//2)**2)
+    r = np.sqrt((x - nx//2)**2 + (y - ny//2)**2)
     image = np.ones((ny, nx), dtype=np.float64)
     locs = r > 0
     image[locs] = 2.0/r[locs] - 1.0
