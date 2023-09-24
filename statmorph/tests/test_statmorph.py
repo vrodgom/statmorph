@@ -328,19 +328,19 @@ class TestSourceMorphology(object):
             'sersic_ellip': 0.05083866217150,
             'sersic_theta': 2.47831542907976,
             'sersic_chi2_dof': 1.3376238276749,
-            'doublesersic_xc': 81.532553358593,
-            'doublesersic_yc': 80.536548408219,
-            'doublesersic_amplitude1': 977.16534068311,
-            'doublesersic_rhalf1': 22.484298765876,
-            'doublesersic_n1': 0.79327851914927,
-            'doublesersic_ellip1': 0.080276873646978,
-            'doublesersic_theta1': 2.2974159066311,
-            'doublesersic_amplitude2': 317.68798626787,
-            'doublesersic_rhalf2': 25.935143308214,
-            'doublesersic_n2': 0.01,
-            'doublesersic_ellip2': 0.1426514566223,
-            'doublesersic_theta2': 0.41940953820527,
-            'doublesersic_chi2_dof': 1.2682460649336,
+            'doublesersic_xc': 81.833668324998,
+            'doublesersic_yc': 80.569118306697,
+            'doublesersic_amplitude1': 538.85377533706,
+            'doublesersic_rhalf1': 9.3163040096374,
+            'doublesersic_n1': 1.3067599434903,
+            'doublesersic_ellip1': 0.15917549351885,
+            'doublesersic_theta1': 0.76239395305723,
+            'doublesersic_amplitude2': 1262.1734747316,
+            'doublesersic_rhalf2': 23.477198713554,
+            'doublesersic_n2': 0.36682254527453,
+            'doublesersic_ellip2': 0.06669592350554,
+            'doublesersic_theta2': 2.4997429173919,
+            'doublesersic_chi2_dof': 1.1574114573895,
             'sky_mean': 3.48760604858398,
             'sky_median': -2.68543863296509,
             'sky_sigma': 150.91754150390625,
@@ -352,7 +352,7 @@ class TestSourceMorphology(object):
             'ny_stamp': 162,
             'flag': 0,
             'flag_sersic': 0,
-            'flag_doublesersic': 2,
+            'flag_doublesersic': 0,
         }
 
         # Run statmorph on the same galaxy from which the above values
@@ -370,13 +370,14 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key],
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-7,
                             err_msg="%s value did not match." % (key,))
             if print_values:
                 print("'%s': %.14g," % (key, morph[key]))
 
     def test_psf(self):
-        # Try delta-like PSF, which should give the same results as no PSF.
+        # Try delta-like PSF, which should return approximately (since we are
+        # using fftconvolve instead of convolve) the same results as no PSF.
         psf = np.array([[0, 0, 0],
                         [0, 1, 0],
                         [0, 0, 0]], dtype=np.float64)
@@ -385,7 +386,7 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key],
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-5,
                             err_msg="%s value did not match." % (key,))
 
     def test_weightmap(self):
@@ -397,7 +398,7 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key],
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-7,
                             err_msg="%s value did not match." % (key,))
 
 

@@ -510,6 +510,12 @@ class SourceMorphology(object):
     include_doublesersic : bool, optional
         If ``True``, also fit a double 2D Sersic model. The default is
         ``False``.
+    doublesersic_rsep_over_rhalf : float, optional
+        This specifies the "boundary" used to separate the inner and outer
+        regions of the image, which are used to perform single Sersic fits
+        and thus construct an initial guess for the double Sersic fit.
+        This argument is provided as a multiple of the (non-parametric)
+        half-light semimajor axis ``rhalf_ellip``. The default value is 2.0.
     doublesersic_tied_ellip : bool, optional
         If True, both components of the double Sersic model share the
         same ellipticity and position angle. The same effect could be
@@ -543,6 +549,7 @@ class SourceMorphology(object):
                  petro_extent_flux=2.0, boxcar_size_shape_asym=3.0,
                  sersic_fitting_args=None, sersic_model_args=None,
                  sersic_maxiter=None, include_doublesersic=False,
+                 doublesersic_rsep_over_rhalf=2.0,
                  doublesersic_tied_ellip=False, doublesersic_fitting_args=None,
                  doublesersic_model_args=None, segmap_overlap_ratio=0.25,
                  verbose=False):
@@ -571,6 +578,7 @@ class SourceMorphology(object):
         self._sersic_model_args = sersic_model_args
         self._sersic_maxiter = sersic_maxiter
         self._include_doublesersic = include_doublesersic
+        self._doublesersic_rsep_over_rhalf = doublesersic_rsep_over_rhalf
         self._doublesersic_tied_ellip = doublesersic_tied_ellip
         self._doublesersic_fitting_args = doublesersic_fitting_args
         self._doublesersic_model_args = doublesersic_model_args
@@ -2743,6 +2751,83 @@ class SourceMorphology(object):
     ###########################
 
     @lazyproperty
+    def _doublesersic_initial_guess(self):
+        """
+        Construct an initial guess for the double 2D Sersic model by
+        separately performing "inner" and "outer" single Sersic fits
+        to the light distribution. The inner and outer regions are
+        separated by an ellipse with semi-major axis given by r_sep,
+        which can be specified by the user as a multiple of rhalf_ellip.
+        """
+        image = self._cutout_stamp_maskzeroed
+        ny, nx = image.shape
+
+        # Prepare data for fitting
+        y, x = np.float64(np.mgrid[0:ny, 0:nx])
+        z = image.copy()
+        weightmap = self._weightmap_stamp
+
+        # Center at pixel that minimizes asymmetry
+        xc, yc = self._asymmetry_center
+
+        theta = self.orientation_asymmetry
+
+        xprime = (x-xc)*np.cos(theta) + (y-yc)*np.sin(theta)
+        yprime = -(x-xc)*np.sin(theta) + (y-yc)*np.cos(theta)
+        r_ellip = np.sqrt(xprime**2 + (yprime*self.elongation_asymmetry)**2)
+
+        # Semimajor axis of the ellipse used to separate the inner and
+        # outer regions:
+        r_sep = self._doublesersic_rsep_over_rhalf * self.rhalf_ellip
+
+        # The initial model is the same for the inner and outer fits:
+        sersic_init = self._sersic_model.copy()
+        # Fix center
+        sersic_init.fixed['x_0'] = True
+        sersic_init.fixed['y_0'] = True
+
+        # Since model fitting can be computationally expensive (especially
+        # with a large PSF), only do it when the other measurements are OK.
+        if self.flag >= 2:
+            warnings.warn('[doublesersic] Skipping initial guess...',
+                          AstropyUserWarning)
+            self.flag_doublesersic = 2
+            return sersic_init, sersic_init
+
+        # INNER SERSIC FIT
+
+        # Exclude pixels with image == 0 or weightmap == 0 from the fit,
+        # as well as pixels outside the region of interest.
+        fit_weights = np.zeros_like(z)
+        locs = (image != 0) & (weightmap != 0) & (r_ellip < r_sep)
+        # The sky background noise is already included in the weightmap:
+        fit_weights[locs] = 1.0 / weightmap[locs]
+
+        # Try to fit model. Here we use less demanding values for ``maxiter``
+        # and ``acc``, since the goal is just to obtain a first guess.
+        fit_sersic = fitting.LevMarLSQFitter()
+        sersic_inner = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
+                                  maxiter=100, acc=1e-4)
+
+        # OUTER SERSIC FIT
+
+        # Exclude pixels with image == 0 or weightmap == 0 from the fit,
+        # as well as pixels outside the region of interest.
+        fit_weights = np.zeros_like(z)
+        locs = (image != 0) & (weightmap != 0) & (r_ellip >= r_sep)
+        # The sky background noise is already included in the weightmap:
+        fit_weights[locs] = 1.0 / weightmap[locs]
+
+        # Try to fit model. Here we use less demanding values for ``maxiter``
+        # and ``acc``, since the goal is just to obtain a first guess.
+        fit_sersic = fitting.LevMarLSQFitter()
+        sersic_outer = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
+                                  maxiter=100, acc=1e-4)
+
+        return sersic_inner, sersic_outer
+
+
+    @lazyproperty
     def _doublesersic_model(self):
         """
         Fit a double 2D Sersic profile using Astropy's model fitting library.
@@ -2778,33 +2863,32 @@ class SourceMorphology(object):
             self._doublesersic_model_args['bounds'] = {'n_1': (0.01, None),
                                                        'n_2': (0.01, None)}
 
-        # Create initial guesses for the model parameters
+        # Obtain initial guess for the model parameters
+        sersic_inner, sersic_outer = self._doublesersic_initial_guess
         if 'x_0' not in self._doublesersic_model_args:
             self._doublesersic_model_args['x_0'] = self.sersic_xc
         if 'y_0' not in self._doublesersic_model_args:
             self._doublesersic_model_args['y_0'] = self.sersic_yc
         if 'amplitude_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['amplitude_1'] = (
-                self.sersic_amplitude / 2)
+            self._doublesersic_model_args['amplitude_1'] = sersic_inner.amplitude.value
         if 'r_eff_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['r_eff_1'] = self.sersic_rhalf
+            self._doublesersic_model_args['r_eff_1'] = sersic_inner.r_eff.value
         if 'n_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['n_1'] = 4.0  # de Vaucouleurs
+            self._doublesersic_model_args['n_1'] = sersic_inner.n.value
         if 'ellip_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['ellip_1'] = self.sersic_ellip
+            self._doublesersic_model_args['ellip_1'] = sersic_inner.ellip.value
         if 'theta_1' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['theta_1'] = self.sersic_theta
+            self._doublesersic_model_args['theta_1'] = sersic_inner.theta.value
         if 'amplitude_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['amplitude_2'] = (
-                self.sersic_amplitude / 2)
+            self._doublesersic_model_args['amplitude_2'] = sersic_outer.amplitude.value
         if 'r_eff_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['r_eff_2'] = self.sersic_rhalf
+            self._doublesersic_model_args['r_eff_2'] = sersic_outer.r_eff.value
         if 'n_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['n_2'] = 1.0  # exponential
+            self._doublesersic_model_args['n_2'] = sersic_outer.n.value
         if 'ellip_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['ellip_2'] = self.sersic_ellip
+            self._doublesersic_model_args['ellip_2'] = sersic_outer.ellip.value
         if 'theta_2' not in self._doublesersic_model_args:
-            self._doublesersic_model_args['theta_2'] = self.sersic_theta
+            self._doublesersic_model_args['theta_2'] = sersic_outer.theta.value
 
         # Origin must coincide with that of image cutout
         self._doublesersic_model_args['x_0'] -= self.xmin_stamp
