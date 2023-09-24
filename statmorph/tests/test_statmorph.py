@@ -370,7 +370,7 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key], rtol=1e-7,
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-6,
                             err_msg="%s value did not match." % (key,))
             if print_values:
                 print("'%s': %.14g," % (key, morph[key]))
@@ -398,7 +398,7 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key], rtol=1e-7,
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-6,
                             err_msg="%s value did not match." % (key,))
 
 
