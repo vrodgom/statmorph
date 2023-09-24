@@ -15,10 +15,11 @@ import skimage.transform
 import skimage.feature
 import skimage.segmentation
 from astropy.utils import lazyproperty
-from astropy.stats import sigma_clipped_stats
+from astropy.stats import (sigma_clipped_stats, akaike_info_criterion_lsq,
+                           bayesian_info_criterion_lsq)
 from astropy.modeling import models, fitting, Fittable2DModel, Parameter
-from astropy.utils.exceptions import (
-    AstropyUserWarning, AstropyDeprecationWarning)
+from astropy.utils.exceptions import (AstropyUserWarning,
+                                      AstropyDeprecationWarning)
 from astropy.convolution import convolve
 import photutils
 
@@ -78,6 +79,8 @@ _quantity_names = [
     'sersic_ellip',
     'sersic_theta',
     'sersic_chi2_dof',
+    'sersic_aic',
+    'sersic_bic',
     'sky_mean',
     'sky_median',
     'sky_sigma',
@@ -104,6 +107,8 @@ _doublesersic_quantity_names = [
     'doublesersic_ellip2',
     'doublesersic_theta2',
     'doublesersic_chi2_dof',
+    'doublesersic_aic',
+    'doublesersic_bic',
 ]
 
 
@@ -2614,17 +2619,18 @@ class SourceMorphology(object):
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
         # Number of "valid" pixels
-        num_validpixels = np.sum(locs)
+        self._sersic_num_validpixels = np.sum(locs)
 
         # Calculate number of free parameters and degrees of freedom
-        num_freeparam = sersic_init.parameters.size  # 7 for Sersic2D
+        self._sersic_num_freeparam = sersic_init.parameters.size  # 7
         for kwarg in ['fixed', 'tied']:
             if kwarg in self._sersic_model_args:
                 for param, value in self._sersic_model_args[kwarg].items():
                     if value:
-                        num_freeparam -= 1
-        assert num_freeparam >= 0
-        self._sersic_num_dof = num_validpixels - num_freeparam
+                        self._sersic_num_freeparam -= 1
+        assert self._sersic_num_freeparam >= 0
+        self._sersic_num_dof = (self._sersic_num_validpixels
+                                - self._sersic_num_freeparam)
         if self._sersic_num_dof <= 0:
             warnings.warn('[sersic] Not enough data for fit.',
                           AstropyUserWarning)
@@ -2745,6 +2751,32 @@ class SourceMorphology(object):
             return -99.0
 
         return self._sersic_chi2 / self._sersic_num_dof
+
+    @lazyproperty
+    def sersic_aic(self):
+        """
+        Akaike Information Criterion (AIC) of the fitted model.
+        """
+        _ = self._sersic_model
+        if self._sersic_chi2 == -99.0:
+            return -99.0
+
+        return akaike_info_criterion_lsq(
+            self._sersic_chi2, self._sersic_num_freeparam,
+            self._sersic_num_validpixels)
+
+    @lazyproperty
+    def sersic_bic(self):
+        """
+        Bayesian Information Criterion (BIC) of the fitted model.
+        """
+        _ = self._sersic_model
+        if self._sersic_chi2 == -99.0:
+            return -99.0
+
+        return bayesian_info_criterion_lsq(
+            self._sersic_chi2, self._sersic_num_freeparam,
+            self._sersic_num_validpixels)
 
     ###########################
     # DOUBLE SERSIC MODEL FIT #
@@ -2919,17 +2951,18 @@ class SourceMorphology(object):
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
         # Number of "valid" pixels
-        num_validpixels = np.sum(locs)
+        self._doublesersic_num_validpixels = np.sum(locs)
 
         # Calculate number of free parameters and degrees of freedom
-        num_freeparam = doublesersic_init.parameters.size  # 12 for DoubleSersic2D
+        self._doublesersic_num_freeparam = doublesersic_init.parameters.size  # 12
         for kwarg in ['fixed', 'tied']:
             if kwarg in self._doublesersic_model_args:
                 for param, value in self._doublesersic_model_args[kwarg].items():
                     if value:
-                        num_freeparam -= 1
-        assert num_freeparam >= 0
-        self._doublesersic_num_dof = num_validpixels - num_freeparam
+                        self._doublesersic_num_freeparam -= 1
+        assert self._doublesersic_num_freeparam >= 0
+        self._doublesersic_num_dof = (self._doublesersic_num_validpixels
+                                      - self._doublesersic_num_freeparam)
         if self._doublesersic_num_dof <= 0:
             warnings.warn('[doublesersic] Not enough data for fit.',
                           AstropyUserWarning)
@@ -3095,6 +3128,32 @@ class SourceMorphology(object):
             return -99.0
 
         return self._doublesersic_chi2 / self._doublesersic_num_dof
+
+    @lazyproperty
+    def doublesersic_aic(self):
+        """
+        Akaike Information Criterion (AIC) of the fitted model.
+        """
+        _ = self._doublesersic_model
+        if self._doublesersic_chi2 == -99.0:
+            return -99.0
+
+        return akaike_info_criterion_lsq(
+            self._doublesersic_chi2, self._doublesersic_num_freeparam,
+            self._doublesersic_num_validpixels)
+
+    @lazyproperty
+    def doublesersic_bic(self):
+        """
+        Bayesian Information Criterion (BIC) of the fitted model.
+        """
+        _ = self._doublesersic_model
+        if self._doublesersic_chi2 == -99.0:
+            return -99.0
+
+        return bayesian_info_criterion_lsq(
+            self._doublesersic_chi2, self._doublesersic_num_freeparam,
+            self._doublesersic_num_validpixels)
 
 
 def source_morphology(image, segmap, **kwargs):
