@@ -985,28 +985,6 @@ class SourceMorphology(object):
         return self.ymax_stamp + 1 - self.ymin_stamp
 
     @lazyproperty
-    def _mask_stamp_nan(self):
-        """
-        Flag any NaN or inf values within the postage stamp.
-        """
-        locs_invalid = ~np.isfinite(self._image[self._slice_stamp])
-        if self._weightmap is not None:
-            locs_invalid |= ~np.isfinite(self._weightmap[self._slice_stamp])
-        return locs_invalid
-
-    @lazyproperty
-    def _mask_stamp_badpixels(self):
-        """
-        Flag bad pixels (outliers).
-        """
-        self.num_badpixels = -1
-        badpixels = np.zeros((self.ny_stamp, self.nx_stamp), dtype=np.bool_)
-        if self._n_sigma_outlier > 0:
-            badpixels = self._get_badpixels(self._image[self._slice_stamp])
-            self.num_badpixels = np.sum(badpixels)
-        return badpixels
-
-    @lazyproperty
     def _mask_stamp(self):
         """
         Create a total binary mask for the "postage stamp".
@@ -1014,12 +992,26 @@ class SourceMorphology(object):
         using the ``mask`` keyword argument) are set to ``True``,
         but the background (segmap == 0) is left alone.
         """
+        # Flag any NaN or inf values within the postage stamp.
+        mask_stamp_nan = ~np.isfinite(self._image[self._slice_stamp])
+        if self._weightmap is not None:
+            mask_stamp_nan |= ~np.isfinite(self._weightmap[self._slice_stamp])
+
+        # Flag bad pixels (outliers).
+        self.num_badpixels = -1
+        mask_stamp_badpixels = np.zeros(
+            (self.ny_stamp, self.nx_stamp), dtype=np.bool_)
+        if self._n_sigma_outlier > 0:
+            mask_stamp_badpixels = self._get_badpixels(
+                self._image[self._slice_stamp])
+            self.num_badpixels = np.sum(mask_stamp_badpixels)
+
         segmap_stamp = self._segmap.data[self._slice_stamp]
         mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self.label)
         if self._mask is not None:
             mask_stamp |= self._mask[self._slice_stamp]
-        mask_stamp |= self._mask_stamp_nan
-        mask_stamp |= self._mask_stamp_badpixels
+        mask_stamp |= mask_stamp_nan
+        mask_stamp |= mask_stamp_badpixels
         return mask_stamp
 
     @lazyproperty
@@ -1068,7 +1060,7 @@ class SourceMorphology(object):
         else:
             weightmap_stamp = self._weightmap[self._slice_stamp]
 
-        weightmap_stamp[self._mask_stamp_nan] = 0.0
+        weightmap_stamp[self._mask_stamp] = 0.0
         return weightmap_stamp
 
     @lazyproperty
@@ -2291,6 +2283,15 @@ class SourceMorphology(object):
             warnings.warn('Invalid D-statistic.', AstropyUserWarning)
             self.flag = 2
             return -99.0  # invalid
+
+        # This is the "last" MID statistic that is calculated, so we try
+        # to clear some memory here.
+        del self._sorted_pixelvals_stamp_no_bg
+        del self._cutout_stamp_maskzeroed_no_bg_nonnegative
+        del self._sorted_pixelvals_stamp_no_bg_nonnegative
+        del self._sorted_pixelvals_mid
+        del self._cutout_mid
+        del self._cutout_mid_smooth
 
         return D
 
