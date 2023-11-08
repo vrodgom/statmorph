@@ -2286,11 +2286,12 @@ class SourceMorphology(object):
 
         # This is the "last" MID statistic that is calculated, so we try
         # to clear some memory here.
+        del self._cutout_stamp_maskzeroed_no_bg
         del self._sorted_pixelvals_stamp_no_bg
         del self._cutout_stamp_maskzeroed_no_bg_nonnegative
         del self._sorted_pixelvals_stamp_no_bg_nonnegative
-        del self._sorted_pixelvals_mid
         del self._cutout_mid
+        del self._sorted_pixelvals_mid
         del self._cutout_mid_smooth
 
         return D
