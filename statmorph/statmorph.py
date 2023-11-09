@@ -319,7 +319,7 @@ class ConvolvedSersic2D(models.Sersic2D):
         """
         Specify the PSF to be convolved with the Sersic2D model.
         """
-        self.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
+        self.psf = psf / np.sum(psf)  # make sure it's normalized
 
     def evaluate(self, x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta):
         """
@@ -329,8 +329,6 @@ class ConvolvedSersic2D(models.Sersic2D):
             x, y, amplitude, r_eff, n, x_0, y_0, ellip, theta)
         if self.psf is None:
             raise AssertionError('Must specify PSF using set_psf method.')
-
-        assert z.dtype == np.float64 and self.psf.dtype == np.float64
 
         return scipy.signal.fftconvolve(z, self.psf, mode='same')
 
@@ -382,7 +380,7 @@ class ConvolvedDoubleSersic2D(DoubleSersic2D):
         """
         Specify the PSF to be convolved with the DoubleSersic2D model.
         """
-        self.psf = np.float64(psf) / np.sum(psf)  # make sure it's normalized
+        self.psf = psf / np.sum(psf)  # make sure it's normalized
 
     def evaluate(self, x, y, x_0, y_0,
                  amplitude_1, r_eff_1, n_1, ellip_1, theta_1,
@@ -396,8 +394,6 @@ class ConvolvedDoubleSersic2D(DoubleSersic2D):
             amplitude_2, r_eff_2, n_2, ellip_2, theta_2)
         if self.psf is None:
             raise AssertionError('Must specify PSF using set_psf method.')
-
-        assert z.dtype == np.float64 and self.psf.dtype == np.float64
 
         return scipy.signal.fftconvolve(z, self.psf, mode='same')
 
@@ -678,7 +674,7 @@ class SourceMorphology(object):
         w = np.array([
             [1, 1, 1],
             [1, 0, 1],
-            [1, 1, 1]], dtype=np.float64)
+            [1, 1, 1]], dtype=image.dtype)
         w = w / np.sum(w)
 
         # Use the fact that var(x) = <x^2> - <x>^2.
@@ -2612,11 +2608,10 @@ class SourceMorphology(object):
         self._sersic_chi2 = -99.0
 
         # Prepare data for fitting
-        z = image.copy()
-        y, x = np.float64(np.mgrid[0:ny, 0:nx])
+        y, x = np.mgrid[0:ny, 0:nx].astype(image.dtype)
         weightmap = self._weightmap_stamp
         # Exclude pixels with image == 0 or weightmap == 0 from the fit.
-        fit_weights = np.zeros_like(z)
+        fit_weights = np.zeros_like(image)
         locs = (image != 0) & (weightmap != 0)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
@@ -2649,8 +2644,9 @@ class SourceMorphology(object):
 
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
-        sersic_model = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
-                                  **self._sersic_fitting_args)
+        sersic_model = fit_sersic(
+            sersic_init, x, y, z=image, weights=fit_weights,
+            **self._sersic_fitting_args)
         if fit_sersic.fit_info['ierr'] not in [1, 2, 3, 4]:
             warnings.warn("[sersic] fit_info['message']: "
                           + fit_sersic.fit_info['message'],
@@ -2678,7 +2674,8 @@ class SourceMorphology(object):
             sersic_model.theta.value)
 
         # Calculate chi^2 statistic of the fitted model.
-        self._sersic_chi2 = np.sum((fit_weights * (z - sersic_model(x, y)))**2)
+        self._sersic_chi2 = np.sum(
+            (fit_weights * (image - sersic_model(x, y)))**2)
 
         # Save runtime
         self.sersic_runtime = time.time() - start
@@ -2797,8 +2794,7 @@ class SourceMorphology(object):
         ny, nx = image.shape
 
         # Prepare data for fitting
-        y, x = np.float64(np.mgrid[0:ny, 0:nx])
-        z = image.copy()
+        y, x = np.mgrid[0:ny, 0:nx].astype(image.dtype)
         weightmap = self._weightmap_stamp
 
         # Center at pixel that minimizes asymmetry
@@ -2832,7 +2828,7 @@ class SourceMorphology(object):
 
         # Exclude pixels with image == 0 or weightmap == 0 from the fit,
         # as well as pixels outside the region of interest.
-        fit_weights = np.zeros_like(z)
+        fit_weights = np.zeros_like(image)
         locs = (image != 0) & (weightmap != 0) & (r_ellip < r_sep)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
@@ -2840,14 +2836,15 @@ class SourceMorphology(object):
         # Try to fit model. Here we use less demanding values for ``maxiter``
         # and ``acc``, since the goal is just to obtain a first guess.
         fit_sersic = fitting.LevMarLSQFitter()
-        sersic_inner = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
-                                  maxiter=100, acc=1e-4)
+        sersic_inner = fit_sersic(
+            sersic_init, x, y, z=image, weights=fit_weights, maxiter=100,
+            acc=1e-4)
 
         # OUTER SERSIC FIT
 
         # Exclude pixels with image == 0 or weightmap == 0 from the fit,
         # as well as pixels outside the region of interest.
-        fit_weights = np.zeros_like(z)
+        fit_weights = np.zeros_like(image)
         locs = (image != 0) & (weightmap != 0) & (r_ellip >= r_sep)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
@@ -2855,8 +2852,9 @@ class SourceMorphology(object):
         # Try to fit model. Here we use less demanding values for ``maxiter``
         # and ``acc``, since the goal is just to obtain a first guess.
         fit_sersic = fitting.LevMarLSQFitter()
-        sersic_outer = fit_sersic(sersic_init, x, y, z=z, weights=fit_weights,
-                                  maxiter=100, acc=1e-4)
+        sersic_outer = fit_sersic(
+            sersic_init, x, y, z=image, weights=fit_weights, maxiter=100,
+            acc=1e-4)
 
         return sersic_inner, sersic_outer
 
@@ -2944,11 +2942,10 @@ class SourceMorphology(object):
         self._doublesersic_chi2 = -99.0
 
         # Prepare data for fitting
-        z = image.copy()
-        y, x = np.float64(np.mgrid[0:ny, 0:nx])
+        y, x = np.mgrid[0:ny, 0:nx].astype(image.dtype)
         weightmap = self._weightmap_stamp
         # Exclude pixels with image == 0 or weightmap == 0 from the fit.
-        fit_weights = np.zeros_like(z)
+        fit_weights = np.zeros_like(image)
         locs = (image != 0) & (weightmap != 0)
         # The sky background noise is already included in the weightmap:
         fit_weights[locs] = 1.0 / weightmap[locs]
@@ -2982,7 +2979,7 @@ class SourceMorphology(object):
         # Try to fit model
         fit_doublesersic = fitting.LevMarLSQFitter()
         doublesersic_model = fit_doublesersic(
-            doublesersic_init, x, y, z=z, weights=fit_weights,
+            doublesersic_init, x, y, z=image, weights=fit_weights,
             **self._doublesersic_fitting_args)
         if fit_doublesersic.fit_info['ierr'] not in [1, 2, 3, 4]:
             warnings.warn("[doublesersic] fit_info['message']: "
@@ -3017,7 +3014,8 @@ class SourceMorphology(object):
             doublesersic_model.theta_2.value)
 
         # Calculate chi^2 statistic of the fitted model.
-        self._doublesersic_chi2 = np.sum((fit_weights * (z - doublesersic_model(x, y)))**2)
+        self._doublesersic_chi2 = np.sum(
+            (fit_weights * (image - doublesersic_model(x, y)))**2)
 
         # Save runtime
         self.doublesersic_runtime = time.time() - start
