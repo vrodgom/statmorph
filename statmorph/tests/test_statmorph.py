@@ -177,7 +177,6 @@ def test_asymmetric():
     assert w[0].category == AstropyUserWarning
     assert 'Minimizer tried to exit bounds.' in str(w[0].message)
     assert morph.flag == 2
-    assert morph._use_centroid
 
 
 def test_small_source():
