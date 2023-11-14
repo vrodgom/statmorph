@@ -2645,14 +2645,6 @@ class SourceMorphology(object):
             self.flag_sersic = 2
             return sersic_init
 
-        # Since model fitting can be computationally expensive (especially
-        # with a large PSF), only do it when the other measurements are OK.
-        if self.flag >= 2:
-            warnings.warn('[sersic] Skipping Sersic fit...',
-                          AstropyUserWarning)
-            self.flag_sersic = 2
-            return sersic_init
-
         # Try to fit model
         fit_sersic = fitting.LevMarLSQFitter()
         sersic_model = fit_sersic(
@@ -2827,14 +2819,6 @@ class SourceMorphology(object):
         sersic_init.fixed['x_0'] = True
         sersic_init.fixed['y_0'] = True
 
-        # Since model fitting can be computationally expensive (especially
-        # with a large PSF), only do it when the other measurements are OK.
-        if self.flag >= 2:
-            warnings.warn('[doublesersic] Skipping initial guess...',
-                          AstropyUserWarning)
-            self.flag_doublesersic = 2
-            return sersic_init, sersic_init
-
         # INNER SERSIC FIT
 
         # Exclude pixels with image == 0 or weightmap == 0 from the fit,
@@ -2975,14 +2959,6 @@ class SourceMorphology(object):
                                       - self._doublesersic_num_freeparam)
         if self._doublesersic_num_dof <= 0:
             warnings.warn('[doublesersic] Not enough data for fit.',
-                          AstropyUserWarning)
-            self.flag_doublesersic = 2
-            return doublesersic_init
-
-        # Since model fitting can be computationally expensive (especially
-        # with a large PSF), only do it when the other measurements are OK.
-        if self.flag >= 2:
-            warnings.warn('[doublesersic] Skipping double Sersic fit...',
                           AstropyUserWarning)
             self.flag_doublesersic = 2
             return doublesersic_init
