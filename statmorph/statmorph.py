@@ -610,10 +610,6 @@ class SourceMorphology(object):
         if self._include_doublesersic:
             self.flag_doublesersic = 0  # flag bad double Sersic fits (0 or 1)
 
-        # If something goes wrong, use centroid instead of asymmetry center
-        # (better performance in some pathological cases, e.g. GOODS-S 32143):
-        self._use_centroid = False
-
         # Check that the labeled galaxy segment has a positive flux sum.
         # If not, this is bad enough to abort all calculations and return
         # an empty object.
@@ -1674,9 +1670,8 @@ class SourceMorphology(object):
         if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
             warnings.warn('[asym_center] Minimizer tried to exit bounds.',
                           AstropyUserWarning)
-            self.flag = 2
-            self._use_centroid = True
-            # Return high value to keep minimizer within range:
+            self.flag = 1
+            # Return large value to keep minimizer within range:
             return 100.0
 
         # Rotate around given center
@@ -1718,8 +1713,9 @@ class SourceMorphology(object):
         if ap_abs_sum == 0.0:
             warnings.warn('[asymmetry_function] Zero flux sum.',
                           AstropyUserWarning)
-            self.flag = 2
-            return -99.0  # invalid
+            self.flag = 1
+            # Return large value to get minimizer out of masked region:
+            return 100.0
 
         if kind == 'shape':
             # The shape asymmetry of the background is zero
@@ -1739,17 +1735,32 @@ class SourceMorphology(object):
         Find the position of the central pixel (relative to the
         "postage stamp" cutout) that minimizes the (CAS) asymmetry.
         """
-        center_0 = np.array([self._xc_stamp, self._yc_stamp])  # initial guess
-        center_asym = opt.fmin(self._asymmetry_function, center_0,
+        centroid = np.array([self._xc_stamp, self._yc_stamp])  # initial guess
+        center_asym = opt.fmin(self._asymmetry_function, centroid,
                                args=(self._cutout_stamp_maskzeroed, 'cas'),
                                xtol=1e-6, disp=False)
 
-        # Check if the bad measurement flag was set by _asymmetry_function:
-        if self._use_centroid:
-            assert self.flag == 2
-            warnings.warn('Using centroid instead of asymmetry center.',
+        # If the asymmetry center drifted too far away from the centroid,
+        # try again with the brightest pixel as the starting point.
+        dist = self._petro_extent_cas * self._rpetro_circ_centroid
+        if np.linalg.norm(center_asym - centroid) > dist:
+            warnings.warn('Asymmetry center drifted too far away from the ' +
+                          'centroid. Trying again with the brightest pixel.',
                           AstropyUserWarning)
-            center_asym = center_0
+            self.flag = 1
+            center_brightest = np.array([self._x_maxval_stamp,
+                                         self._y_maxval_stamp])
+            center_asym = opt.fmin(self._asymmetry_function, center_brightest,
+                                   args=(self._cutout_stamp_maskzeroed, 'cas'),
+                                   xtol=1e-6, disp=False)
+
+            # If the asymmetry center again drifted too far, just
+            # use the centroid and flip the bad measurement flag.
+            if np.linalg.norm(center_asym - center_brightest) > dist:
+                warnings.warn('Using centroid instead of asymmetry center.',
+                              AstropyUserWarning)
+                self.flag = 2
+                center_asym = centroid
 
         # Print warning if center is masked
         ic, jc = int(center_asym[1]), int(center_asym[0])
