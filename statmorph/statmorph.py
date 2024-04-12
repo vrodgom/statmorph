@@ -69,6 +69,7 @@ _quantity_names = [
     'multimode',
     'intensity',
     'deviation',
+    'rms_asymmetry',
     'outer_asymmetry',
     'shape_asymmetry',
     'sersic_amplitude',
@@ -1654,9 +1655,9 @@ class SourceMorphology(object):
             The (x,y) position of the center.
         image : array-like
             The 2D image.
-        kind : {'cas', 'outer', 'shape'}
+        kind : {'cas', 'rms', 'outer', 'shape'}
             Whether to calculate the traditional CAS asymmetry (default),
-            outer asymmetry or shape asymmetry.
+            RMS asymmetry, outer asymmetry, or shape asymmetry.
 
         Returns
         -------
@@ -1686,7 +1687,7 @@ class SourceMorphology(object):
         image_180 = np.where(~mask_symmetric, image_180, 0.0)
 
         # Create aperture for the chosen kind of asymmetry
-        if kind == 'cas':
+        if kind == 'cas' or kind == 'rms':
             r = self._petro_extent_cas * self._rpetro_circ_centroid
             ap = photutils.aperture.CircularAperture(center, r)
         elif kind == 'outer':
@@ -1706,6 +1707,9 @@ class SourceMorphology(object):
         else:
             raise NotImplementedError('Asymmetry kind not understood:', kind)
 
+        # Aperture area (in pixels)
+        ap_area = _aperture_area(ap, mask_symmetric)
+
         # Apply eq. 10 from Lotz et al. (2004)
         ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
         ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
@@ -1720,11 +1724,19 @@ class SourceMorphology(object):
         if kind == 'shape':
             # The shape asymmetry of the background is zero
             asym = ap_abs_diff / ap_abs_sum
+        elif kind == 'rms':
+            # Apply eq. 27 from Sazonova et al. (2024)
+            ap_sqr_sum = ap.do_photometry(image**2, method='exact')[0][0]
+            ap_sqr_diff = ap.do_photometry((image_180-image)**2, method='exact')[0][0]
+            if self.sky_sigma == -99.0:  # invalid skybox
+                asym = ap_sqr_diff / ap_sqr_sum
+            else:
+                asym = (ap_sqr_diff - 2*ap_area*self.sky_sigma**2) / (
+                        ap_sqr_sum - ap_area*self.sky_sigma**2)
         else:
             if self._sky_asymmetry == -99.0:  # invalid skybox
                 asym = ap_abs_diff / ap_abs_sum
             else:
-                ap_area = _aperture_area(ap, mask_symmetric)
                 asym = (ap_abs_diff - ap_area*self._sky_asymmetry) / ap_abs_sum
 
         return asym
@@ -1839,6 +1851,17 @@ class SourceMorphology(object):
         image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._asymmetry_center,
                                         image, 'cas')
+
+        return asym
+
+    @lazyproperty
+    def rms_asymmetry(self):
+        """
+        Calculate RMS asymmetry as described in Sazonova et al. (2024).
+        """
+        image = self._cutout_stamp_maskzeroed
+        asym = self._asymmetry_function(self._asymmetry_center,
+                                        image, 'rms')
 
         return asym
 

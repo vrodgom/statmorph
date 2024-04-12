@@ -317,6 +317,7 @@ class TestSourceMorphology(object):
             'multimode': 0.23423423423423,
             'intensity': 0.51203949030140,
             'deviation': 0.01522525597953,
+            'rms_asymmetry': 0.0053900924481633,
             'outer_asymmetry': -0.01821399684443,
             'shape_asymmetry': 0.16308278287864,
             'sersic_amplitude': 1296.95288208155739,
