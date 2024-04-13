@@ -32,7 +32,7 @@ __all__ = [
     '__version__',
 ]
 
-__version__ = '0.5.5'
+__version__ = '0.5.6'
 
 # A list of the quantities calculated by SourceMorphology,
 # excluding the double Sersic parameters:
@@ -1857,7 +1857,8 @@ class SourceMorphology(object):
     @lazyproperty
     def rms_asymmetry(self):
         """
-        Calculate RMS asymmetry as described in Sazonova et al. (2024).
+        Calculate the RMS asymmetry as in eq. 27 of Sazonova et al. (2024).
+        Note that this actually corresponds to the *square* of A_rms.
         """
         image = self._cutout_stamp_maskzeroed
         asym = self._asymmetry_function(self._asymmetry_center,
