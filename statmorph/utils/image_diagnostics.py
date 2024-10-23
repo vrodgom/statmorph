@@ -6,7 +6,6 @@ debugging and/or examining the morphology of a source in detail.
 # Licensed under a 3-Clause BSD License.
 
 import numpy as np
-import sys
 import skimage.transform
 import statmorph
 from astropy.visualization import simple_norm

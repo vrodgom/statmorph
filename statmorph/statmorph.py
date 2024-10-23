@@ -21,7 +21,11 @@ from astropy.modeling import models, fitting, Fittable2DModel, Parameter
 from astropy.utils.exceptions import (AstropyUserWarning,
                                       AstropyDeprecationWarning)
 from astropy.convolution import convolve
-import photutils
+from photutils.aperture import (CircularAperture, CircularAnnulus,
+                                EllipticalAperture, EllipticalAnnulus)
+from photutils.background import ModeEstimatorBackground
+from photutils.segmentation import SegmentationImage
+
 
 __all__ = [
     'ConvolvedSersic2D',
@@ -161,7 +165,7 @@ def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     if r == 0:
         cur_fraction = 0.0
     else:
-        ap = photutils.aperture.CircularAperture(center, r)
+        ap = CircularAperture(center, r)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         cur_fraction = ap_sum / total_sum
@@ -176,7 +180,7 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
     """
     flag = 0
 
-    ap_total = photutils.aperture.CircularAperture(center, r_total)
+    ap_total = CircularAperture(center, r_total)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
     if total_sum == 0:
@@ -220,7 +224,7 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
         cur_fraction = 0.0
     else:
         b = a / elongation
-        ap = photutils.aperture.EllipticalAperture(center, a, b, theta=theta)
+        ap = EllipticalAperture(center, a, b, theta=theta)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         cur_fraction = ap_sum / total_sum
@@ -238,7 +242,7 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     flag = 0
 
     b_total = a_total / elongation
-    ap_total = photutils.aperture.EllipticalAperture(
+    ap_total = EllipticalAperture(
         center, a_total, b_total, theta=theta)
 
     total_sum = ap_total.do_photometry(image, method='exact')[0][0]
@@ -595,8 +599,8 @@ class SourceMorphology(object):
         # Measure runtime
         start = time.time()
 
-        if not isinstance(self._segmap, photutils.segmentation.SegmentationImage):
-            self._segmap = photutils.segmentation.SegmentationImage(self._segmap)
+        if not isinstance(self._segmap, SegmentationImage):
+            self._segmap = SegmentationImage(self._segmap)
 
         # Check sanity of input data
         self._segmap.check_labels([self.label])
@@ -1110,8 +1114,8 @@ class SourceMorphology(object):
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
 
-        circ_annulus = photutils.aperture.CircularAnnulus(center, r_in, r_out)
-        circ_aperture = photutils.aperture.CircularAperture(center, r)
+        circ_annulus = CircularAnnulus(center, r_in, r_out)
+        circ_aperture = CircularAperture(center, r)
 
         # Force mean fluxes to be positive:
         circ_annulus_mean_flux = np.abs(_aperture_mean_nomask(
@@ -1208,7 +1212,7 @@ class SourceMorphology(object):
         """
         image = self._cutout_stamp_maskzeroed
         r = self._petro_extent_flux * self.rpetro_circ
-        ap = photutils.aperture.CircularAperture(self._asymmetry_center, r)
+        ap = CircularAperture(self._asymmetry_center, r)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
         return ap_sum
@@ -1232,9 +1236,9 @@ class SourceMorphology(object):
 
         b_out = a_out / elongation
 
-        ellip_annulus = photutils.aperture.EllipticalAnnulus(
+        ellip_annulus = EllipticalAnnulus(
             center, a_in, a_out, b_out, theta=theta)
-        ellip_aperture = photutils.aperture.EllipticalAperture(
+        ellip_aperture = EllipticalAperture(
             center, a, b, theta=theta)
 
         # Force mean fluxes to be positive:
@@ -1327,7 +1331,7 @@ class SourceMorphology(object):
         a = self._petro_extent_flux * self.rpetro_ellip
         b = a / self.elongation_asymmetry
         theta = self.orientation_asymmetry
-        ap = photutils.aperture.EllipticalAperture(
+        ap = EllipticalAperture(
             self._asymmetry_center, a, b, theta=theta)
         # Force flux sum to be positive:
         ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
@@ -1352,7 +1356,7 @@ class SourceMorphology(object):
         a_out = self.rpetro_ellip + 0.5 * self._annulus_width
         b_out = a_out / self.elongation_asymmetry
         theta = self.orientation_asymmetry
-        ellip_annulus = photutils.aperture.EllipticalAnnulus(
+        ellip_annulus = EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta=theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, cutout_smooth, method='exact')
@@ -1694,21 +1698,21 @@ class SourceMorphology(object):
         # Create aperture for the chosen kind of asymmetry
         if kind == 'cas' or kind == 'rms':
             r = self._petro_extent_cas * self._rpetro_circ_centroid
-            ap = photutils.aperture.CircularAperture(center, r)
+            ap = CircularAperture(center, r)
         elif kind == 'outer':
             a_in = self.rhalf_ellip
             a_out = self.rmax_ellip
             b_out = a_out / self.elongation_asymmetry
             theta = self.orientation_asymmetry
             assert (a_in > 0) & (a_out > 0)
-            ap = photutils.aperture.EllipticalAnnulus(center, a_in, a_out, b_out, theta=theta)
+            ap = EllipticalAnnulus(center, a_in, a_out, b_out, theta=theta)
         elif kind == 'shape':
             if np.isnan(self.rmax_circ) or (self.rmax_circ <= 0):
                 warnings.warn('[shape_asym] Invalid rmax_circ value.',
                               AstropyUserWarning)
                 self.flag = 2
                 return -99.0  # invalid
-            ap = photutils.aperture.CircularAperture(center, self.rmax_circ)
+            ap = CircularAperture(center, self.rmax_circ)
         else:
             raise NotImplementedError('Asymmetry kind not understood:', kind)
 
@@ -1939,7 +1943,7 @@ class SourceMorphology(object):
         # Exclude central region during smoothness calculation:
         r_in = self._petro_fraction_cas * self.rpetro_circ
         r_out = self._petro_extent_cas * self.rpetro_circ
-        ap = photutils.aperture.CircularAnnulus(self._asymmetry_center, r_in, r_out)
+        ap = CircularAnnulus(self._asymmetry_center, r_in, r_out)
 
         boxcar_size = int(self._petro_fraction_cas * self.rpetro_circ)
         image_smooth = ndi.uniform_filter(image, size=boxcar_size)
@@ -2405,7 +2409,7 @@ class SourceMorphology(object):
         # that only contains background sky (hopefully).
         r_in = self._petro_extent_flux * self.rpetro_ellip
         r_out = 2.0 * self._petro_extent_flux * self.rpetro_ellip
-        circ_annulus = photutils.aperture.CircularAnnulus(center, r_in, r_out)
+        circ_annulus = CircularAnnulus(center, r_in, r_out)
 
         # Convert circular annulus aperture to binary mask
         circ_annulus_mask = circ_annulus.to_mask(method='center')
@@ -2431,7 +2435,7 @@ class SourceMorphology(object):
                 return ~self._mask_stamp_no_bg
 
         # Define the "mode" as in Bertin & Arnouts (1996):
-        bkg_estimator = photutils.background.ModeEstimatorBackground(
+        bkg_estimator = ModeEstimatorBackground(
             median_factor=2.5, mean_factor=1.5)
 
         # Do sigma-clipping until convergence
@@ -2624,7 +2628,7 @@ class SourceMorphology(object):
             self.flag_sersic = 2
             a_in = guess_r_eff
         b_out = (1 - guess_ellip) * a_out
-        ellip_annulus = photutils.aperture.EllipticalAnnulus(
+        ellip_annulus = EllipticalAnnulus(
             guess_center, a_in, a_out, b_out, theta=guess_theta)
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, image, method='exact')
@@ -3211,8 +3215,8 @@ def source_morphology(image, segmap, **kwargs):
     See `README.rst` for a list of references.
 
     """
-    if not isinstance(segmap, photutils.segmentation.SegmentationImage):
-        segmap = photutils.segmentation.SegmentationImage(segmap)
+    if not isinstance(segmap, SegmentationImage):
+        segmap = SegmentationImage(segmap)
 
     sources_morph = []
     for label in segmap.labels:
