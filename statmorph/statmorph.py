@@ -120,9 +120,14 @@ def _quantile(sorted_values, q):
 
     Notes
     -----
-    The result is identical to np.percentile(..., interpolation='lower'),
+    The result is identical to np.percentile(..., method='lower'),
     but the currently defined function is infinitely faster for sorted arrays.
     """
+    # Only scalars or length-1 arrays are supported:
+    if hasattr(q, '__len__'):
+        assert len(q) == 1
+        q = q[0]
+
     if q < 0 or q > 1:
         raise ValueError('Quantiles must be in the range [0, 1].')
     return sorted_values[int(q*(len(sorted_values)-1))]
@@ -676,9 +681,9 @@ class SourceMorphology(object):
 
         # Use the fact that var(x) = <x^2> - <x>^2.
         local_mean = convolve(image, w, boundary='extend',
-                              normalize_kernel=False)
+                              normalize_kernel=False, nan_treatment='fill', fill_value=0)
         local_mean2 = convolve(image**2, w, boundary='extend',
-                               normalize_kernel=False)
+                               normalize_kernel=False, nan_treatment='fill', fill_value=0)
         local_std = np.sqrt(local_mean2 - local_mean**2)
 
         # Get "bad pixels"

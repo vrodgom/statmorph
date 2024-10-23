@@ -24,7 +24,7 @@ def test_quantile():
     res1 = []; res2 = []
     for q in quantiles:
         res1.append(_quantile(data, q))
-        res2.append(np.percentile(data, 100*q, interpolation='lower'))
+        res2.append(np.percentile(data, 100*q, method='lower'))
     assert_allclose(res1, res2)
     # Check out-of-range input.
     with pytest.raises(ValueError):

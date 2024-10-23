@@ -28,7 +28,7 @@ def test_make_figure():
     hdulist = fits.open('%s/../../tests/data/slice.fits' % (curdir,))
     image = hdulist[0].data
     segmap = hdulist[1].data
-    mask = np.bool8(hdulist[2].data)
+    mask = np.bool_(hdulist[2].data)
     gain = 1.0
     source_morphs = statmorph.source_morphology(image, segmap, mask=mask, gain=gain)
     morph = source_morphs[0]
