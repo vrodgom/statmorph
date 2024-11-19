@@ -1763,7 +1763,7 @@ class SourceMorphology(object):
 
         # If the asymmetry center drifted too far away from the centroid,
         # try again with the brightest pixel as the starting point.
-        dist = self._petro_extent_cas * self._rpetro_circ_centroid
+        dist = self._petro_fraction_cas * self._rpetro_circ_centroid
         if np.linalg.norm(center_asym - centroid) > dist:
             warnings.warn('Asymmetry center drifted too far away from the ' +
                           'centroid. Trying again with the brightest pixel.',
