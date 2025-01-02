@@ -36,7 +36,7 @@ __all__ = [
     '__version__',
 ]
 
-__version__ = '0.6.0'
+__version__ = '0.6.1'
 
 # A list of the quantities calculated by SourceMorphology,
 # excluding the double Sersic parameters:
@@ -1006,7 +1006,7 @@ class SourceMorphology(object):
         if self._n_sigma_outlier > 0:
             mask_stamp_badpixels = self._get_badpixels(
                 self._image[self._slice_stamp])
-            self.num_badpixels = np.sum(mask_stamp_badpixels)
+            self.num_badpixels = int(np.sum(mask_stamp_badpixels))
 
         segmap_stamp = self._segmap.data[self._slice_stamp]
         mask_stamp = (segmap_stamp != 0) & (segmap_stamp != self.label)

@@ -11,7 +11,7 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 setup(
     name='statmorph',
-    version='0.6.0',
+    version='0.6.1',
     description='Non-parametric morphological diagnostics of galaxy images',
     long_description=long_description,
     url='https://github.com/vrodgom/statmorph',
@@ -34,7 +34,7 @@ setup(
                       'scikit-image>=0.25.0',
                       'astropy>=2.0',
                       'photutils>=0.7'],
-    python_requires='>=3.7',
+    python_requires='>=3.9',
     extras_require={
         'matplotlib': ['matplotlib>=3.0']},
 )
