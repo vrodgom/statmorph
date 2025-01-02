@@ -31,7 +31,7 @@ setup(
     include_package_data=True,
     install_requires=['numpy>=1.14.0',
                       'scipy>=0.19',
-                      'scikit-image>=0.14',
+                      'scikit-image>=0.25.0',
                       'astropy>=2.0',
                       'photutils>=0.7'],
     python_requires='>=3.7',
