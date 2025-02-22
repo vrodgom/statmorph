@@ -31,9 +31,9 @@ setup(
     include_package_data=True,
     install_requires=['numpy>=1.14.0',
                       'scipy>=0.19',
-                      'scikit-image>=0.25.0',
+                      'scikit-image>=0.25.2',
                       'astropy>=2.0',
-                      'photutils>=0.7'],
+                      'photutils>=2.0'],
     python_requires='>=3.9',
     extras_require={
         'matplotlib': ['matplotlib>=3.0']},
