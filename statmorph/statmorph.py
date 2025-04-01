@@ -2612,6 +2612,14 @@ class SourceMorphology(object):
         self._sersic_model_args['x_0'] -= self.xmin_stamp
         self._sersic_model_args['y_0'] -= self.ymin_stamp
 
+        # ..as well as the bounds for the origin
+        if 'x_0' in self._sersic_model_args['bounds']:
+            self._sersic_model_args['bounds']['x_0'][0] -= self.xmin_stamp
+            self._sersic_model_args['bounds']['x_0'][1] -= self.xmin_stamp
+        if 'y_0' in self._sersic_model_args['bounds']:
+            self._sersic_model_args['bounds']['y_0'][0] -= self.ymin_stamp
+            self._sersic_model_args['bounds']['y_0'][1] -= self.ymin_stamp
+
         # For readability
         guess_r_eff = self._sersic_model_args['r_eff']
         guess_center = np.array([self._sersic_model_args['x_0'],
