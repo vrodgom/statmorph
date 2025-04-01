@@ -745,7 +745,7 @@ class SourceMorphology(object):
             if self._verbose:
                 warnings.warn('Gini and MID segmaps are quite different.',
                               AstropyUserWarning)
-            self.flag = max(self.flag, 1)  # suspect
+            self.flag = max(self.flag, 1)
 
     @lazyproperty
     def _centroid(self):
@@ -1389,7 +1389,7 @@ class SourceMorphology(object):
             if self._verbose:
                 warnings.warn('[segmap_gini] Disjoint features in Gini segmap.',
                               AstropyUserWarning)
-            self.flag = max(self.flag, 1)  # suspect
+            self.flag = max(self.flag, 1)
             ic, jc = np.argwhere(cutout_smooth == np.max(cutout_smooth))[0]
             assert labeled_array[ic, jc] != 0
             segmap = labeled_array == labeled_array[ic, jc]
@@ -1680,7 +1680,7 @@ class SourceMorphology(object):
         if xc < 0 or xc >= nx or yc < 0 or yc >= ny:
             warnings.warn('[asym_center] Minimizer tried to exit bounds.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = max(self.flag, 1)
             # Return large value to keep minimizer within range:
             return 100.0
 
@@ -1726,7 +1726,7 @@ class SourceMorphology(object):
         if ap_abs_sum == 0.0:
             warnings.warn('[asymmetry_function] Zero flux sum.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = max(self.flag, 1)
             # Return large value to get minimizer out of masked region:
             return 100.0
 
@@ -1768,7 +1768,7 @@ class SourceMorphology(object):
             warnings.warn('Asymmetry center drifted too far away from the ' +
                           'centroid. Trying again with the brightest pixel.',
                           AstropyUserWarning)
-            self.flag = 1
+            self.flag = max(self.flag, 1)
             center_brightest = np.array([self._x_maxval_stamp,
                                          self._y_maxval_stamp])
             center_asym = opt.fmin(self._asymmetry_function, center_brightest,
