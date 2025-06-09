@@ -137,18 +137,10 @@ def _quantile(sorted_values, q):
     return sorted_values[int(q*(len(sorted_values)-1))]
 
 
-def _aperture_area(ap, mask, **kwargs):
-    """
-    Calculate the area of a photutils aperture object,
-    excluding masked pixels.
-    """
-    return ap.do_photometry(np.float64(~mask), **kwargs)[0][0]
-
-
 def _aperture_mean_nomask(ap, image, **kwargs):
     """
     Calculate the mean flux of an image for a given photutils
-    aperture object. Note that we do not use ``_aperture_area``
+    aperture object. Note that we do not use ``ap.area_overlap()``
     here. Instead, we divide by the full area of the
     aperture, regardless of masked and out-of-range pixels.
     This avoids problems when the aperture is larger than the
@@ -1717,7 +1709,7 @@ class SourceMorphology(object):
             raise NotImplementedError('Asymmetry kind not understood:', kind)
 
         # Aperture area (in pixels)
-        ap_area = _aperture_area(ap, mask_symmetric)
+        ap_area = ap.area_overlap(image, mask=mask_symmetric)
 
         # Apply eq. 10 from Lotz et al. (2004)
         ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
