@@ -120,7 +120,7 @@ def test_negative_source():
     r = np.sqrt((x - nx//2)**2 + (y - ny//2)**2)
     image = np.ones((ny, nx), dtype=np.float64)
     locs = r > 0
-    image[locs] = 2.0/r[locs] - 1.0
+    image[locs] = 5.0/r[locs] - 1.0
     segmap = np.int64(r < 2)
     with pytest.warns() as w:
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)

@@ -143,10 +143,18 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     aperture object. Note that we do not use ``ap.area_overlap()``
     here. Instead, we divide by the full area of the
     aperture, regardless of masked and out-of-range pixels.
-    This avoids problems when the aperture is larger than the
-    region of interest.
     """
     return ap.do_photometry(image, **kwargs)[0][0] / ap.area
+
+
+def _aperture_mean(ap, image, mask, **kwargs):
+    """
+    Calculate the mean flux of an image for a given photutils
+    aperture object, accounting for masked and out-of-range pixels.
+    If the area overlap is zero, return 0.0 instead of NaN.
+    """
+    ap_area = ap.area_overlap(image, mask=mask)
+    return ap.do_photometry(image, **kwargs)[0][0] / ap_area if ap_area else 0.0
 
 
 def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
@@ -1102,6 +1110,7 @@ class SourceMorphology(object):
         of this function is the Petrosian radius.
         """
         image = self._cutout_stamp_maskzeroed
+        mask = self._mask_stamp
 
         r_in = r - 0.5 * self._annulus_width
         r_out = r + 0.5 * self._annulus_width
@@ -1110,10 +1119,10 @@ class SourceMorphology(object):
         circ_aperture = CircularAperture(center, r)
 
         # Force mean fluxes to be positive:
-        circ_annulus_mean_flux = np.abs(_aperture_mean_nomask(
-            circ_annulus, image, method='exact'))
-        circ_aperture_mean_flux = np.abs(_aperture_mean_nomask(
-            circ_aperture, image, method='exact'))
+        circ_annulus_mean_flux = np.abs(_aperture_mean(
+            circ_annulus, image, mask, method='exact'))
+        circ_aperture_mean_flux = np.abs(_aperture_mean(
+            circ_aperture, image, mask, method='exact'))
 
         if circ_aperture_mean_flux == 0:
             warnings.warn('[rpetro_circ] Mean flux is zero.', AstropyUserWarning)
@@ -1221,6 +1230,7 @@ class SourceMorphology(object):
 
         """
         image = self._cutout_stamp_maskzeroed
+        mask = self._mask_stamp
 
         b = a / elongation
         a_in = a - 0.5 * self._annulus_width
@@ -1234,10 +1244,10 @@ class SourceMorphology(object):
             center, a, b, theta=theta)
 
         # Force mean fluxes to be positive:
-        ellip_annulus_mean_flux = np.abs(_aperture_mean_nomask(
-            ellip_annulus, image, method='exact'))
-        ellip_aperture_mean_flux = np.abs(_aperture_mean_nomask(
-            ellip_aperture, image, method='exact'))
+        ellip_annulus_mean_flux = np.abs(_aperture_mean(
+            ellip_annulus, image, mask, method='exact'))
+        ellip_aperture_mean_flux = np.abs(_aperture_mean(
+            ellip_aperture, image, mask, method='exact'))
 
         if ellip_aperture_mean_flux == 0:
             warnings.warn('[rpetro_ellip] Mean flux is zero.', AstropyUserWarning)
@@ -1341,7 +1351,8 @@ class SourceMorphology(object):
         """
         # Smooth image
         petro_sigma = self._petro_fraction_gini * self.rpetro_ellip
-        cutout_smooth = ndi.gaussian_filter(self._cutout_stamp_maskzeroed, petro_sigma)
+        cutout_smooth = ndi.gaussian_filter(
+            self._cutout_stamp_maskzeroed, petro_sigma, mode='constant', cval=0.0)
 
         # Use mean flux at the Petrosian "radius" as threshold
         a_in = self.rpetro_ellip - 0.5 * self._annulus_width
@@ -1350,6 +1361,13 @@ class SourceMorphology(object):
         theta = self.orientation_asymmetry
         ellip_annulus = EllipticalAnnulus(
             (self._xc_stamp, self._yc_stamp), a_in, a_out, b_out, theta=theta)
+        # Here we ignore the mask because, since the image has been smoothed,
+        # properly calculating the average flux would require some sort of
+        # interpolation over the masked regions, introducing additional
+        # assumptions. However, note that we do not need to have the correct
+        # (i.e. mask-aware) flux within the annulus, but simply a flux value
+        # that "represents" the Petrosian radius, which acts as a threshold
+        # in the subsequent calculations.
         ellip_annulus_mean_flux = _aperture_mean_nomask(
             ellip_annulus, cutout_smooth, method='exact')
 
@@ -2552,6 +2570,7 @@ class SourceMorphology(object):
         Return the fitted model object.
         """
         image = self._cutout_stamp_maskzeroed
+        mask = self._mask_stamp
         ny, nx = image.shape
 
         # Measure runtime
@@ -2630,8 +2649,8 @@ class SourceMorphology(object):
         b_out = (1 - guess_ellip) * a_out
         ellip_annulus = EllipticalAnnulus(
             guess_center, a_in, a_out, b_out, theta=guess_theta)
-        ellip_annulus_mean_flux = _aperture_mean_nomask(
-            ellip_annulus, image, method='exact')
+        ellip_annulus_mean_flux = _aperture_mean(
+            ellip_annulus, image, mask, method='exact')
         if ellip_annulus_mean_flux <= 0.0:
             warnings.warn('[sersic] Nonpositive flux at r_e.', AstropyUserWarning)
             self.flag_sersic = 2
