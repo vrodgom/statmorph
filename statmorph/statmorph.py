@@ -1060,7 +1060,7 @@ class SourceMorphology(object):
             weightmap_stamp = np.sqrt(
                 np.abs(self._image[self._slice_stamp])/self._gain + self.sky_sigma**2)
         else:
-            weightmap_stamp = self._weightmap[self._slice_stamp]
+            weightmap_stamp = self._weightmap[self._slice_stamp].copy()
 
         weightmap_stamp[self._mask_stamp] = 0.0
         return weightmap_stamp
