@@ -22,7 +22,7 @@ copyright = '2017-2025, Vicente Rodriguez-Gomez'
 author = 'Vicente Rodriguez-Gomez'
 
 # The full version, including alpha/beta/rc tags
-release = '0.7.0'
+release = '0.7.1'
 
 
 # -- General configuration ---------------------------------------------------
