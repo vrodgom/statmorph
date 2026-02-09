@@ -1176,10 +1176,11 @@ class SourceMorphology(object):
 
         assert r_min is not None
         if r_max is None:
-            warnings.warn('[rpetro_circ] rpetro too large.',
+            warnings.warn('[rpetro_circ] rpetro too large. ' +
+                          'Setting it to _diagonal_distance.',
                           AstropyUserWarning)
             self.flag = 2
-            r_max = r_outer
+            return r_outer
 
         rpetro_circ = opt.brentq(self._petrosian_function_circ,
                                  r_min, r_max, args=(center,), xtol=1e-6)
@@ -1302,10 +1303,11 @@ class SourceMorphology(object):
 
         assert a_min is not None
         if a_max is None:
-            warnings.warn('[rpetro_ellip] rpetro too large.',
+            warnings.warn('[rpetro_ellip] rpetro too large. ' +
+                          'Setting it to _diagonal_distance * elongation.',
                           AstropyUserWarning)
             self.flag = 2
-            a_max = a_outer
+            return a_outer
 
         rpetro_ellip = opt.brentq(self._petrosian_function_ellip, a_min, a_max,
                                   args=(center, elongation, theta,), xtol=1e-6)
