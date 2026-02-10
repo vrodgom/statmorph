@@ -18,11 +18,11 @@
 # -- Project information -----------------------------------------------------
 
 project = 'statmorph'
-copyright = '2017-2025, Vicente Rodriguez-Gomez'
+copyright = '2017-2026, Vicente Rodriguez-Gomez'
 author = 'Vicente Rodriguez-Gomez'
 
 # The full version, including alpha/beta/rc tags
-release = '0.7.1'
+release = '0.7.2'
 
 
 # -- General configuration ---------------------------------------------------
