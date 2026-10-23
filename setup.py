@@ -34,7 +34,7 @@ setup(
                       'scikit-image>=0.25.2',
                       'astropy>=2.0',
                       'photutils>=2.0'],
-    python_requires='>=3.9',
+    python_requires='>=3.12',
     extras_require={
         'matplotlib': ['matplotlib>=3.0']},
 )
