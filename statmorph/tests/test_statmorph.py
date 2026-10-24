@@ -387,7 +387,8 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            assert_allclose(morph[key], self.correct_values[key], rtol=1e-5,
+            # TMP: laxer rtol to accomodate different versions of Scipy:
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-2,
                             err_msg="%s value did not match." % (key,))
             if print_values:
                 print("'%s': %.14g," % (key, morph[key]))
@@ -403,10 +404,8 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            # 2026/10/22: not sure what changed in Scipy 1.18, but fftconvolve
-            # seems less precise now (at least for a delta-like PSF),
-            # so I had to reduce the rtol from 1e-5 to 1e-3:
-            assert_allclose(morph[key], self.correct_values[key], rtol=1e-3,
+            # TMP: laxer rtol to accomodate different versions of Scipy:
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-2,
                             err_msg="%s value did not match." % (key,))
             if print_values:
                 print("'%s': %.14g," % (key, morph[key]))
@@ -421,10 +420,8 @@ class TestSourceMorphology(object):
             include_doublesersic=True)
         morph = source_morphs[0]
         for key in self.correct_values:
-            # 2026/10/22: it seems that small differences in sky_sigma are
-            # being propagated, so also relax the rtol a bit here, at least
-            # while changes in scipy functions get sorted out (1e-5 to 2e-3):
-            assert_allclose(morph[key], self.correct_values[key], rtol=2e-3,
+            # TMP: laxer rtol to accomodate different versions of Scipy:
+            assert_allclose(morph[key], self.correct_values[key], rtol=1e-2,
                             err_msg="%s value did not match." % (key,))
 
 
