@@ -14,6 +14,7 @@ import skimage.measure
 import skimage.transform
 import skimage.feature
 import skimage.segmentation
+import photutils
 from astropy.utils import lazyproperty
 from astropy.stats import (sigma_clipped_stats, akaike_info_criterion_lsq,
                            bayesian_info_criterion_lsq)
@@ -22,10 +23,10 @@ from astropy.utils.exceptions import (AstropyUserWarning,
                                       AstropyDeprecationWarning)
 from astropy.convolution import convolve
 from photutils.aperture import (CircularAperture, CircularAnnulus,
-                                EllipticalAperture, EllipticalAnnulus)
+                                EllipticalAperture, EllipticalAnnulus,
+                                AperturePhotometry)
 from photutils.background import ModeEstimatorBackground
 from photutils.segmentation import SegmentationImage
-
 
 __all__ = [
     'ConvolvedSersic2D',
@@ -144,7 +145,10 @@ def _aperture_mean_nomask(ap, image, **kwargs):
     here. Instead, we divide by the full area of the
     aperture, regardless of masked and out-of-range pixels.
     """
-    return ap.do_photometry(image, **kwargs)[0][0] / ap.area
+    if photutils.__version__ < '3.1.1':
+        return ap.do_photometry(image, **kwargs)[0][0] / ap.area
+
+    return AperturePhotometry(image, ap, **kwargs).flux / ap.area
 
 
 def _aperture_mean(ap, image, mask, **kwargs):
@@ -154,7 +158,10 @@ def _aperture_mean(ap, image, mask, **kwargs):
     If the area overlap is zero, return 0.0 instead of NaN.
     """
     ap_area = ap.area_overlap(image, mask=mask)
-    return ap.do_photometry(image, **kwargs)[0][0] / ap_area if ap_area else 0.0
+    if photutils.__version__ < '3.1.1':
+        return ap.do_photometry(image, **kwargs)[0][0] / ap_area if ap_area else 0.0
+
+    return AperturePhotometry(image, ap, **kwargs).flux / ap.area if ap_area else 0.0
 
 
 def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
@@ -167,7 +174,10 @@ def _fraction_of_total_function_circ(r, image, center, fraction, total_sum):
     else:
         ap = CircularAperture(center, r)
         # Force flux sum to be positive:
-        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        if photutils.__version__ < '3.1.1':
+            ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        else:
+            ap_sum = np.abs(AperturePhotometry(image, ap, method='exact').flux)
         cur_fraction = ap_sum / total_sum
 
     return cur_fraction - fraction
@@ -182,7 +192,10 @@ def _radius_at_fraction_of_total_circ(image, center, r_total, fraction):
 
     ap_total = CircularAperture(center, r_total)
 
-    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    if photutils.__version__ < '3.1.1':
+        total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    else:
+        total_sum = AperturePhotometry(image, ap_total, method='exact').flux
     if total_sum == 0:
         warnings.warn('[r_circ] Total flux sum is zero.', AstropyUserWarning)
         flag = 2
@@ -226,7 +239,10 @@ def _fraction_of_total_function_ellip(a, image, center, elongation, theta,
         b = a / elongation
         ap = EllipticalAperture(center, a, b, theta=theta)
         # Force flux sum to be positive:
-        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        if photutils.__version__ < '3.1.1':
+            ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        else:
+            ap_sum = np.abs(AperturePhotometry(image, ap, method='exact').flux)
         cur_fraction = ap_sum / total_sum
 
     return cur_fraction - fraction
@@ -245,7 +261,10 @@ def _radius_at_fraction_of_total_ellip(image, center, elongation, theta,
     ap_total = EllipticalAperture(
         center, a_total, b_total, theta=theta)
 
-    total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    if photutils.__version__ < '3.1.1':
+        total_sum = ap_total.do_photometry(image, method='exact')[0][0]
+    else:
+        total_sum = AperturePhotometry(image, ap_total, method='exact').flux
     if total_sum == 0:
         warnings.warn('[r_ellip] Total flux sum is zero.', AstropyUserWarning)
         flag = 2
@@ -1216,7 +1235,10 @@ class SourceMorphology(object):
         r = self._petro_extent_flux * self.rpetro_circ
         ap = CircularAperture(self._asymmetry_center, r)
         # Force flux sum to be positive:
-        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        if photutils.__version__ < '3.1.1':
+            ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        else:
+            ap_sum = np.abs(AperturePhotometry(image, ap, method='exact').flux)
         return ap_sum
 
     def _petrosian_function_ellip(self, a, center, elongation, theta):
@@ -1338,7 +1360,10 @@ class SourceMorphology(object):
         ap = EllipticalAperture(
             self._asymmetry_center, a, b, theta=theta)
         # Force flux sum to be positive:
-        ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        if photutils.__version__ < '3.1.1':
+            ap_sum = np.abs(ap.do_photometry(image, method='exact')[0][0])
+        else:
+            ap_sum = np.abs(AperturePhotometry(image, ap, method='exact').flux)
         return ap_sum
 
     #######################
@@ -1732,8 +1757,12 @@ class SourceMorphology(object):
         ap_area = ap.area_overlap(image, mask=mask_symmetric)
 
         # Apply eq. 10 from Lotz et al. (2004)
-        ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
-        ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
+        if photutils.__version__ < '3.1.1':
+            ap_abs_sum = ap.do_photometry(np.abs(image), method='exact')[0][0]
+            ap_abs_diff = ap.do_photometry(np.abs(image_180-image), method='exact')[0][0]
+        else:
+            ap_abs_sum = AperturePhotometry(np.abs(image), ap, method='exact').flux
+            ap_abs_diff = AperturePhotometry(np.abs(image_180-image), ap, method='exact').flux
 
         if ap_abs_sum == 0.0:
             warnings.warn('[asymmetry_function] Zero flux sum.',
@@ -1747,8 +1776,12 @@ class SourceMorphology(object):
             asym = ap_abs_diff / ap_abs_sum
         elif kind == 'rms':
             # Apply eq. 27 from Sazonova et al. (2024)
-            ap_sqr_sum = ap.do_photometry(image**2, method='exact')[0][0]
-            ap_sqr_diff = ap.do_photometry((image_180-image)**2, method='exact')[0][0]
+            if photutils.__version__ < '3.1.1':
+                ap_sqr_sum = ap.do_photometry(image**2, method='exact')[0][0]
+                ap_sqr_diff = ap.do_photometry((image_180-image)**2, method='exact')[0][0]
+            else:
+                ap_sqr_sum = AperturePhotometry(image**2, ap, method='exact').flux
+                ap_sqr_diff = AperturePhotometry((image_180-image)**2, ap, method='exact').flux
             if self.sky_sigma == -99.0:  # invalid skybox
                 asym = ap_sqr_diff / ap_sqr_sum
             else:
@@ -1963,8 +1996,12 @@ class SourceMorphology(object):
         image_diff = image - image_smooth
         image_diff[image_diff < 0] = 0.0  # set negative pixels to zero
 
-        ap_flux = ap.do_photometry(image, method='exact')[0][0]
-        ap_diff = ap.do_photometry(image_diff, method='exact')[0][0]
+        if photutils.__version__ < '3.1.1':
+            ap_flux = ap.do_photometry(image, method='exact')[0][0]
+            ap_diff = ap.do_photometry(image_diff, method='exact')[0][0]
+        else:
+            ap_flux = AperturePhotometry(image, ap, method='exact').flux
+            ap_diff = AperturePhotometry(image_diff, ap, method='exact').flux
 
         if ap_flux <= 0:
             warnings.warn('[smoothness] Nonpositive total flux.',

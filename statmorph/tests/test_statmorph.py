@@ -14,11 +14,6 @@ from numpy.testing import assert_allclose
 
 __all__ = ['runall']
 
-# TMP: ignore Photutils deprecation warnings (temporary solution).
-# TODO: replace ap.do_photometry() with the new AperturePhotometry class.
-import warnings
-from photutils.utils.exceptions import PhotutilsDeprecationWarning
-
 
 def test_quantile():
     from statmorph.statmorph import _quantile
@@ -111,7 +106,6 @@ def test_bright_pixel():
     segmap = np.int64(image > 1e-3)
     segmap[5, 5] = 0
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            n_sigma_outlier=-1)
     assert w[0].category == AstropyUserWarning
@@ -129,7 +123,6 @@ def test_negative_source():
     image[locs] = 5.0/r[locs] - 1.0
     segmap = np.int64(r < 2)
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[0].category == AstropyUserWarning
     assert 'Total flux sum is negative.' in str(w[0].message)
@@ -180,7 +173,6 @@ def test_asymmetric():
     image = x - 20
     segmap = np.int64(image > 0)
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[0].category == AstropyUserWarning
     assert 'Minimizer tried to exit bounds.' in str(w[0].message)
@@ -196,7 +188,6 @@ def test_small_source():
     segmap = np.int64(image > 0.1)
     label = 1
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
     assert w[-1].category == AstropyUserWarning
@@ -213,7 +204,6 @@ def test_full_segmap():
     segmap = np.ones((ny, nx), dtype=np.int64)
     label = 1
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0,
                                            verbose=True)
     assert w[-1].category == AstropyUserWarning
@@ -266,7 +256,6 @@ def test_full_gini_segmap():
     image = np.exp(-((x - nx // 2) ** 2 + (y - ny // 2) ** 2) / 25)
     segmap = np.int64(image > 0.5)
     with pytest.warns() as w:
-        warnings.filterwarnings("ignore", category=PhotutilsDeprecationWarning)
         morph = statmorph.SourceMorphology(image, segmap, label, gain=1.0)
     assert w[0].category == AstropyUserWarning
     assert 'Full Gini segmap!' in str(w[0].message)

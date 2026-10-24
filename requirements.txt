@@ -1,5 +1,5 @@
-numpy>=1.14.0
-scipy>=0.19
+numpy>=2.0
+scipy>=1.15
 scikit-image>=0.25.2
-astropy>=2.0
-photutils>=2.0
+astropy>=7.0
+photutils>=3.1.1
